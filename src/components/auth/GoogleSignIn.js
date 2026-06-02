@@ -3,7 +3,10 @@ import { useGoogleLogin } from '@react-oauth/google';
 export default function GoogleSignIn({ onSuccess }) {
   const login = useGoogleLogin({
     onSuccess,
-    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
+    scope: [
+      'https://www.googleapis.com/auth/spreadsheets.readonly',
+      'https://www.googleapis.com/auth/calendar.readonly',
+    ].join(' '),
   });
 
   return (

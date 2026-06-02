@@ -4,6 +4,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import NavBar from './components/layout/NavBar';
 import GoogleSignIn from './components/auth/GoogleSignIn';
 import FinancePage from './pages/FinancePage';
+import CalendarPage from './pages/CalendarPage';
 import StPetePage from './pages/StPetePage';
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
@@ -31,7 +32,7 @@ function AppShell({ user, onSignOut }) {
           element={<FinancePage accessToken={user.access_token} />}
         />
         <Route path="/dashboard" element={<ComingSoon label="Dashboard" />} />
-        <Route path="/calendar" element={<ComingSoon label="Calendar" />} />
+        <Route path="/calendar" element={<CalendarPage accessToken={user.access_token} />} />
         <Route path="/expenses" element={<ComingSoon label="Expenses" />} />
         <Route path="/grocery" element={<ComingSoon label="Grocery List" />} />
         <Route path="/st-pete" element={<StPetePage />} />
