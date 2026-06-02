@@ -18,7 +18,8 @@
       "Bash(npm list *)",
       "Bash(npx playwright *)",
       "Bash(cd /tmp)",
-      "Bash(npm init *)"
+      "Bash(npm init *)",
+      "PowerShell(Get-Process *)"
     ]
   }
 }

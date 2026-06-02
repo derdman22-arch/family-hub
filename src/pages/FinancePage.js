@@ -1,7 +1,9 @@
+import { useState, useEffect } from 'react';
 import { usePortfolio } from '../hooks/usePortfolio';
 import PortfolioMetrics from '../components/portfolio/PortfolioMetrics';
 import PortfolioTable from '../components/portfolio/PortfolioTable';
 import PortfolioChart from '../components/portfolio/PortfolioChart';
+import FinanceLock, { isFinanceUnlocked, lockFinance } from '../components/auth/FinanceLock';
 
 const SHEET_URL =
   'https://docs.google.com/spreadsheets/d/1nln0UH69uKDCvPDmlHPUnQcLWacV7hzoiciFeWlWpG0/edit';
@@ -18,8 +20,22 @@ function formatTime(date) {
 }
 
 export default function FinancePage({ accessToken }) {
+  const [unlocked, setUnlocked] = useState(isFinanceUnlocked);
   const { holdings, loading, error, lastUpdated, refresh, totals } =
     usePortfolio(accessToken);
+
+  useEffect(() => {
+    return () => lockFinance();
+  }, []);
+
+  if (!unlocked) {
+    return <FinanceLock onUnlock={() => setUnlocked(true)} />;
+  }
+
+  function handleLock() {
+    lockFinance();
+    setUnlocked(false);
+  }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
@@ -36,6 +52,15 @@ export default function FinancePage({ accessToken }) {
           </div>
 
           <div className="flex items-center gap-3">
+            {process.env.REACT_APP_FINANCE_PIN && (
+              <button
+                onClick={handleLock}
+                className="flex items-center gap-2 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white text-sm px-3 py-2 rounded-lg transition-colors"
+                title="Lock portfolio"
+              >
+                <LockIcon />
+              </button>
+            )}
             <button
               onClick={refresh}
               disabled={loading}
@@ -81,6 +106,14 @@ export default function FinancePage({ accessToken }) {
         )}
       </div>
     </div>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+      <path fillRule="evenodd" d="M12 1.5a5.25 5.25 0 00-5.25 5.25v3a3 3 0 00-3 3v6.75a3 3 0 003 3h10.5a3 3 0 003-3v-6.75a3 3 0 00-3-3v-3A5.25 5.25 0 0012 1.5zm3.75 8.25v-3a3.75 3.75 0 10-7.5 0v3h7.5z" clipRule="evenodd" />
+    </svg>
   );
 }
 

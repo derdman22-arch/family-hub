@@ -21,6 +21,7 @@ Copy `.env.example` to `.env.local` and fill in values before running locally:
 | `REACT_APP_SPREADSHEET_ID` | Google Sheets spreadsheet ID |
 | `REACT_APP_FINNHUB_API_KEY` | Finnhub stock price API key (free tier) |
 | `REACT_APP_GOOGLE_PLACES_KEY` | Google Places API (New) key |
+| `REACT_APP_FINANCE_PIN` | 4-digit PIN to lock the Finance page (leave blank to disable) |
 
 ## Architecture
 

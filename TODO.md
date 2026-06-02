@@ -1,15 +1,4 @@
-# Family Hub — To Do
-
-## Calendar
-- [ ] Add event — create new events from the calendar page
-- [x] Event detail view — click an event to see full details (title, time, location, description, attendees)
-
-## St. Pete
-- [ ] Restaurants widget — live data via Google Places API
-- [ ] Events widget — concerts, festivals & local happenings
-
-## Other Pages
-- [ ] Dashboard
-- [ ] Expenses
-- [ ] Grocery List
-- [ ] Messages
+1. Create notes database with sample collections
+2. Create API to call service
+3. Display notes in family hub, this would eventually become a full time app 
+4. Create authentication service
