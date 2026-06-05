@@ -6,6 +6,7 @@ import GoogleSignIn from './components/auth/GoogleSignIn';
 import FinancePage from './pages/FinancePage';
 import CalendarPage from './pages/CalendarPage';
 import StPetePage from './pages/StPetePage';
+import MessagesPage from './pages/MessagesPage';
 
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
 
@@ -36,7 +37,7 @@ function AppShell({ user, onSignOut }) {
         <Route path="/expenses" element={<ComingSoon label="Expenses" />} />
         <Route path="/grocery" element={<ComingSoon label="Grocery List" />} />
         <Route path="/st-pete" element={<StPetePage />} />
-        <Route path="/messages" element={<ComingSoon label="Messages" />} />
+        <Route path="/messages" element={<MessagesPage user={user} />} />
         <Route path="*" element={<Navigate to="/finance" replace />} />
       </Routes>
     </>
