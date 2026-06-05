@@ -49,9 +49,9 @@ const INITIAL_TODOS = [
 ];
 
 const PRIORITY_CONFIG = {
-  high:   { label: 'High',   color: 'text-red-400',    bg: 'bg-red-900/20 border-red-700/40' },
-  medium: { label: 'Medium', color: 'text-yellow-400', bg: 'bg-yellow-900/10 border-yellow-700/30' },
-  low:    { label: 'Low',    color: 'text-gray-400',   bg: 'bg-gray-800/30 border-gray-700/30' },
+  high:   { label: 'High',   color: 'text-red-400',    bg: 'bg-red-900/20 border-red-700/40',     accent: 'border-l-red-500' },
+  medium: { label: 'Medium', color: 'text-yellow-400', bg: 'bg-yellow-900/10 border-yellow-700/30', accent: 'border-l-yellow-500' },
+  low:    { label: 'Low',    color: 'text-gray-400',   bg: 'bg-gray-800/30 border-gray-700/30',   accent: 'border-l-gray-600' },
 };
 
 function formatRelativeTime(isoString) {
@@ -77,16 +77,16 @@ function TodoCard({ todo, onComplete, onUndo }) {
 
   return (
     <div
-      className={`border rounded-xl p-4 transition-all ${
+      className={`rounded-xl border-l-4 shadow-lg transition-all ${
         todo.completed
-          ? 'bg-gray-900/50 border-gray-800 opacity-60'
-          : `bg-gray-900 border-gray-800 hover:border-gray-700`
+          ? 'bg-gray-900 border border-gray-800 border-l-gray-700 shadow-black/20 opacity-50'
+          : `bg-gray-900 border border-gray-800 ${priority.accent} shadow-black/40 hover:shadow-xl hover:shadow-black/50 hover:-translate-y-0.5`
       }`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-4 p-5">
         <button
           onClick={() => (todo.completed ? onUndo(todo._id) : onComplete(todo._id))}
-          className={`mt-0.5 w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+          className={`mt-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
             todo.completed
               ? 'bg-green-600 border-green-600 text-white'
               : 'border-gray-600 hover:border-green-500 hover:bg-green-900/20'
@@ -98,29 +98,28 @@ function TodoCard({ todo, onComplete, onUndo }) {
 
         <div className="flex-1 min-w-0">
           <p
-            className={`text-sm font-medium leading-snug ${
+            className={`text-sm font-semibold leading-snug ${
               todo.completed ? 'line-through text-gray-500' : 'text-white'
             }`}
           >
             {todo.text}
           </p>
           {todo.note && (
-            <p className={`text-xs mt-1 leading-relaxed ${todo.completed ? 'text-gray-600' : 'text-gray-400'}`}>
+            <p className={`text-xs mt-1.5 leading-relaxed ${todo.completed ? 'text-gray-600' : 'text-gray-400'}`}>
               {todo.note}
             </p>
           )}
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
             <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold bg-blue-800 text-blue-200 shrink-0">
               {todo.createdBy.initials}
             </div>
-            <span className="text-xs text-gray-600">{todo.createdBy.name}</span>
+            <span className="text-xs text-gray-500">{todo.createdBy.name}</span>
             <span className="text-gray-700">·</span>
-            <span className="text-xs text-gray-600">{formatRelativeTime(todo.createdAt)}</span>
+            <span className="text-xs text-gray-500">{formatRelativeTime(todo.createdAt)}</span>
             {!todo.completed && (
-              <>
-                <span className="text-gray-700">·</span>
-                <span className={`text-xs font-medium ${priority.color}`}>{priority.label}</span>
-              </>
+              <span className={`ml-auto text-xs font-semibold px-2 py-0.5 rounded-full border ${priority.bg} ${priority.color}`}>
+                {priority.label}
+              </span>
             )}
             {todo.completed && todo.completedAt && (
               <>
