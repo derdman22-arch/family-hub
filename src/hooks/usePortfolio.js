@@ -41,8 +41,9 @@ export function usePortfolio(accessToken) {
       value: acc.value + h.currentValue,
       cost: acc.cost + h.costBasis,
       gainLoss: acc.gainLoss + h.gainLoss,
+      dayChange: acc.dayChange + h.dayChange,
     }),
-    { value: 0, cost: 0, gainLoss: 0 }
+    { value: 0, cost: 0, gainLoss: 0, dayChange: 0 }
   );
   totals.returnPct =
     totals.cost > 0 ? (totals.gainLoss / totals.cost) * 100 : 0;

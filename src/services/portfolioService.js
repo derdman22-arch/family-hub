@@ -91,7 +91,7 @@ export async function getPortfolio(accessToken) {
       costBasis,
       gainLoss,
       gainLossPct,
-      dayChange: price.change || 0,
+      dayChange: (price.change || 0) * p.shares,
       dayChangePct: price.changePct || 0,
     };
   });

@@ -15,7 +15,7 @@ export default function NavBar({ user, onSignOut }) {
 
   return (
     <nav className="bg-gray-900 border-b border-gray-800 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">
+      <div className="max-w-7xl mx-auto px-4 flex items-center justify-between h-14">36
         <div className="flex items-center gap-1 overflow-x-auto">
           <span className="text-white font-bold text-lg mr-4 shrink-0">
             Family Hub
