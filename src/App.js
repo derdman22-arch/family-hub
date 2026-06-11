@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import NavBar from './components/layout/NavBar';
 import GoogleSignIn from './components/auth/GoogleSignIn';
+import HomePage from './pages/HomePage';
 import FinancePage from './pages/FinancePage';
 import CalendarPage from './pages/CalendarPage';
 import StPetePage from './pages/StPetePage';
@@ -27,7 +28,7 @@ function AppShell({ user, onSignOut }) {
     <>
       <NavBar user={user} onSignOut={onSignOut} />
       <Routes>
-        <Route path="/" element={<Navigate to="/finance" replace />} />
+        <Route path="/" element={<HomePage user={user} />} />
         <Route
           path="/finance"
           element={<FinancePage accessToken={user.access_token} />}
@@ -38,7 +39,7 @@ function AppShell({ user, onSignOut }) {
         <Route path="/grocery" element={<ComingSoon label="Grocery List" />} />
         <Route path="/st-pete" element={<StPetePage />} />
         <Route path="/messages" element={<MessagesPage user={user} />} />
-        <Route path="*" element={<Navigate to="/finance" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );
@@ -52,23 +53,48 @@ function AuthenticatedApp() {
       return null;
     }
   });
+  const [authError, setAuthError] = useState(null);
 
-  function handleSignIn(tokenResponse) {
-    // Fetch the user's profile using the access token
-    fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+  async function handleSignIn(tokenResponse) {
+    setAuthError(null);
+
+    const profileResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
       headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-    })
-      .then((r) => r.json())
-      .then((profile) => {
-        const userData = {
-          access_token: tokenResponse.access_token,
-          name: profile.name,
-          picture: profile.picture,
-          email: profile.email,
-        };
-        sessionStorage.setItem('fh_user', JSON.stringify(userData));
-        setUser(userData);
+    });
+    const profile = await profileResp.json();
+
+    // Verify the user is in the Atlas allowlist
+    let jwtToken = null;
+    try {
+      const resp = await fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: tokenResponse.access_token }),
       });
+      if (resp.status === 403) {
+        setAuthError(`${profile.email} is not authorized to access Family Hub.`);
+        return;
+      }
+      if (!resp.ok) {
+        setAuthError('Sign-in failed. Please try again.');
+        return;
+      }
+      const { token } = await resp.json();
+      jwtToken = token;
+    } catch {
+      // Backend unreachable — allow access without JWT
+    }
+
+    const userData = {
+      access_token: tokenResponse.access_token,
+      name: profile.name,
+      picture: profile.picture,
+      email: profile.email,
+      ...(jwtToken && { jwt_token: jwtToken }),
+    };
+
+    sessionStorage.setItem('fh_user', JSON.stringify(userData));
+    setUser(userData);
   }
 
   function handleSignOut() {
@@ -76,7 +102,7 @@ function AuthenticatedApp() {
     setUser(null);
   }
 
-  if (!user) return <GoogleSignIn onSuccess={handleSignIn} />;
+  if (!user) return <GoogleSignIn onSuccess={handleSignIn} authError={authError} />;
 
   return (
     <BrowserRouter>

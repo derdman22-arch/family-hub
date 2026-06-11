@@ -16,11 +16,14 @@
     "recharts": "^3.8.1",
     "web-vitals": "^2.1.4"
   },
+  "proxy": "http://localhost:5000",
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "server": "node server/index.js",
+    "dev": "concurrently \"npm start\" \"npm run server\""
   },
   "eslintConfig": {
     "extends": [
@@ -42,6 +45,7 @@
   },
   "devDependencies": {
     "autoprefixer": "^10.5.0",
+    "concurrently": "^9.2.1",
     "postcss": "^8.5.15",
     "tailwindcss": "^3.4.19"
   }

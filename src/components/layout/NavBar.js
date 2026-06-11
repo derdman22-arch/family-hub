@@ -1,13 +1,13 @@
 import { Link, useLocation } from 'react-router-dom';
 
 const NAV_ITEMS = [
-  { label: 'Finance', path: '/finance' },
-  { label: 'Dashboard', path: '/dashboard' },
-  { label: 'Calendar', path: '/calendar' },
-  { label: 'Expenses', path: '/expenses' },
-  { label: 'Grocery', path: '/grocery' },
-  { label: 'St. Pete', path: '/st-pete' },
-  { label: 'Messages', path: '/messages' },
+  { label: 'Home',      path: '/'          },
+  { label: 'Finance',   path: '/finance'   },
+  { label: 'Calendar',  path: '/calendar'  },
+  { label: 'Messages',  path: '/messages'  },
+  { label: 'St. Pete',  path: '/st-pete'   },
+  { label: 'Expenses',  path: '/expenses'  },
+  { label: 'Grocery',   path: '/grocery'   },
 ];
 
 export default function NavBar({ user, onSignOut }) {
@@ -25,7 +25,7 @@ export default function NavBar({ user, onSignOut }) {
               key={item.path}
               to={item.path}
               className={`px-3 py-1.5 rounded text-sm font-medium whitespace-nowrap transition-colors ${
-                pathname.startsWith(item.path)
+                (item.path === '/' ? pathname === '/' : pathname.startsWith(item.path))
                   ? 'bg-blue-600 text-white'
                   : 'text-gray-400 hover:text-white hover:bg-gray-800'
               }`}

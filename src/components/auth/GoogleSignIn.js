@@ -1,6 +1,6 @@
 import { useGoogleLogin } from '@react-oauth/google';
 
-export default function GoogleSignIn({ onSuccess }) {
+export default function GoogleSignIn({ onSuccess, authError }) {
   const login = useGoogleLogin({
     onSuccess,
     scope: [
@@ -24,6 +24,11 @@ export default function GoogleSignIn({ onSuccess }) {
           <GoogleIcon />
           Sign in with Google
         </button>
+        {authError && (
+          <p className="text-red-400 text-sm mt-6 bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+            {authError}
+          </p>
+        )}
         <p className="text-gray-600 text-xs mt-6">
           Only your Google account is used — data stays in your own Google Sheet.
         </p>
