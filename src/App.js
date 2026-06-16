@@ -29,10 +29,7 @@ function AppShell({ user, onSignOut }) {
       <NavBar user={user} onSignOut={onSignOut} />
       <Routes>
         <Route path="/" element={<HomePage user={user} />} />
-        <Route
-          path="/finance"
-          element={<FinancePage accessToken={user.access_token} />}
-        />
+        <Route path="/finance" element={<ComingSoon label="Finance" />} />
         <Route path="/dashboard" element={<ComingSoon label="Dashboard" />} />
         <Route path="/calendar" element={<CalendarPage accessToken={user.access_token} />} />
         <Route path="/expenses" element={<ComingSoon label="Expenses" />} />

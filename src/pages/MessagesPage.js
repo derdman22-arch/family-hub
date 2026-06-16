@@ -1,58 +1,13 @@
 import { useState } from 'react';
-
-// Mock data — will be replaced by MongoDB API calls
-const INITIAL_TODOS = [
-  {
-    _id: '1',
-    text: 'Buy groceries for the week',
-    note: 'Milk, eggs, bread, butter, and vegetables',
-    priority: 'high',
-    completed: false,
-    completedAt: null,
-    completedBy: null,
-    createdBy: { name: 'Dan', initials: 'D' },
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-  },
-  {
-    _id: '2',
-    text: 'Schedule dentist appointment for the kids',
-    note: '',
-    priority: 'medium',
-    completed: false,
-    completedAt: null,
-    completedBy: null,
-    createdBy: { name: 'Jaclyn', initials: 'D' },
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
-  },
-  {
-    _id: '3',
-    text: 'Pay electric bill',
-    note: 'Due by the 15th',
-    priority: 'high',
-    completed: false,
-    completedAt: null,
-    completedBy: null,
-    createdBy: { name: 'Dan', initials: 'D' },
-    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-  },
-  {
-    _id: '4',
-    text: 'Research summer camps',
-    note: 'Look into YMCA and art camp options',
-    priority: 'low',
-    completed: true,
-    completedAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-    completedBy: { name: 'Dan', initials: 'DE' },
-    createdBy: { name: 'Jaclyn', initials: 'JE' },
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString(),
-  },
-];
+import { useNotes } from '../hooks/useTodos';
 
 const PRIORITY_CONFIG = {
-  high:   { label: 'High',   color: 'text-red-400',    bg: 'bg-red-900/20 border-red-700/40',     accent: 'border-l-red-500' },
-  medium: { label: 'Medium', color: 'text-yellow-400', bg: 'bg-yellow-900/10 border-yellow-700/30', accent: 'border-l-yellow-500' },
-  low:    { label: 'Low',    color: 'text-gray-400',   bg: 'bg-gray-800/30 border-gray-700/30',   accent: 'border-l-gray-600' },
+  High:   { label: 'High',   color: 'text-red-400',    bg: 'bg-red-900/20 border-red-700/40',      accent: 'border-l-red-500',    pill: 'bg-red-900/30 border-red-700/50 text-red-400' },
+  Medium: { label: 'Medium', color: 'text-yellow-400', bg: 'bg-yellow-900/10 border-yellow-700/30', accent: 'border-l-yellow-500', pill: 'bg-yellow-900/20 border-yellow-700/40 text-yellow-400' },
+  Low:    { label: 'Low',    color: 'text-gray-400',   bg: 'bg-gray-800/30 border-gray-700/30',    accent: 'border-l-gray-600',   pill: 'bg-gray-800/40 border-gray-700/40 text-gray-400' },
 };
+
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function formatRelativeTime(isoString) {
   const diff = Date.now() - new Date(isoString).getTime();
@@ -61,7 +16,93 @@ function formatRelativeTime(isoString) {
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 14) return `${days}d ago`;
+  return new Date(isoString).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function formatDueDate(isoString) {
+  const date = new Date(isoString);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(date);
+  due.setHours(0, 0, 0, 0);
+  const diff = Math.round((due - today) / 86400000);
+  if (diff < 0) return { label: `Overdue by ${Math.abs(diff)}d`, overdue: true };
+  if (diff === 0) return { label: 'Due today', overdue: false };
+  if (diff === 1) return { label: 'Due tomorrow', overdue: false };
+  return { label: `Due ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`, overdue: false };
+}
+
+function getInitials(user) {
+  if (!user) return '?';
+  if (user.name) return user.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+  return (user.username ?? user.email ?? '?')[0].toUpperCase();
+}
+
+function UserAvatar({ user, size = 'sm' }) {
+  const dim = size === 'sm' ? 'w-5 h-5 text-xs' : 'w-6 h-6 text-xs';
+  if (user?.picture) {
+    return <img src={user.picture} alt={user.name ?? user.username} className={`${dim} rounded-full object-cover shrink-0`} />;
+  }
+  return (
+    <div className={`${dim} rounded-full flex items-center justify-center font-bold bg-blue-800 text-blue-200 shrink-0`}>
+      {getInitials(user)}
+    </div>
+  );
+}
+
+function UserAvatarWithInitials({ user }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 shrink-0">
+      <UserAvatar user={user} size="sm" />
+      <span className="text-xs font-semibold text-gray-400">{getInitials(user)}</span>
+    </span>
+  );
+}
+
+function displayName(user) {
+  return user?.name ?? user?.username ?? user?.email ?? null;
+}
+
+function CompletionTracker({ notes }) {
+  const completed = notes.filter((n) => n.completedAt && n.completedBy);
+  if (completed.length === 0) return null;
+
+  const byUser = {};
+  completed.forEach((n) => {
+    const uid = n.completedBy.userId ?? n.completedBy.username;
+    if (!byUser[uid]) byUser[uid] = { user: n.completedBy, count: 0 };
+    byUser[uid].count++;
+  });
+
+  const ranked = Object.values(byUser).sort((a, b) => b.count - a.count);
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 mb-6">
+      <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-widest mb-3">Completion Tracker</h2>
+      <div className="flex flex-col gap-2">
+        {ranked.map(({ user, count }) => {
+          const uid = user.userId ?? user.username;
+          const pct = Math.round((count / completed.length) * 100);
+          return (
+            <div key={uid} className="flex items-center gap-3">
+              <UserAvatarWithInitials user={user} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-gray-300 font-medium truncate">{displayName(user)}</span>
+                  <span className="text-xs font-bold text-green-400 ml-2 shrink-0">{count} done</span>
+                </div>
+                <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-green-600 rounded-full transition-all" style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function CheckIcon() {
@@ -72,60 +113,83 @@ function CheckIcon() {
   );
 }
 
-function TodoCard({ todo, onComplete, onUndo }) {
-  const priority = PRIORITY_CONFIG[todo.priority];
+function PrioritySummary({ notes }) {
+  const active = notes.filter((n) => !n.completedAt);
+  if (active.length === 0) return null;
+  const counts = { High: 0, Medium: 0, Low: 0 };
+  active.forEach((n) => { if (counts[n.priority] !== undefined) counts[n.priority]++; });
+  return (
+    <div className="flex gap-2 mb-6 flex-wrap">
+      {Object.entries(counts).map(([p, count]) => {
+        if (count === 0) return null;
+        const cfg = PRIORITY_CONFIG[p];
+        return (
+          <span key={p} className={`text-xs font-semibold px-3 py-1 rounded-full border ${cfg.pill}`}>
+            {count} {cfg.label}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+
+function NoteCard({ note, onComplete, onUndo }) {
+  const completed = !!note.completedAt;
+  const priority = PRIORITY_CONFIG[note.priority] ?? PRIORITY_CONFIG.Medium;
+  const due = !completed && note.dueDate ? formatDueDate(note.dueDate) : null;
 
   return (
     <div
       className={`rounded-xl border-l-4 shadow-lg transition-all ${
-        todo.completed
+        completed
           ? 'bg-gray-900 border border-gray-800 border-l-gray-700 shadow-black/20 opacity-50'
           : `bg-gray-900 border border-gray-800 ${priority.accent} shadow-black/40 hover:shadow-xl hover:shadow-black/50 hover:-translate-y-0.5`
       }`}
     >
       <div className="flex items-start gap-4 p-5">
         <button
-          onClick={() => (todo.completed ? onUndo(todo._id) : onComplete(todo._id))}
+          onClick={() => (completed ? onUndo(note._id) : onComplete(note._id))}
           className={`mt-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
-            todo.completed
+            completed
               ? 'bg-green-600 border-green-600 text-white'
               : 'border-gray-600 hover:border-green-500 hover:bg-green-900/20'
           }`}
-          aria-label={todo.completed ? 'Mark incomplete' : 'Mark complete'}
+          aria-label={completed ? 'Re-open' : 'Mark complete'}
         >
-          {todo.completed && <CheckIcon />}
+          {completed && <CheckIcon />}
         </button>
 
         <div className="flex-1 min-w-0">
-          <p
-            className={`text-sm font-semibold leading-snug ${
-              todo.completed ? 'line-through text-gray-500' : 'text-white'
-            }`}
-          >
-            {todo.text}
+          <p className={`text-sm font-semibold leading-snug ${completed ? 'line-through text-gray-500' : 'text-white'}`}>
+            {note.text}
           </p>
-          {todo.note && (
-            <p className={`text-xs mt-1.5 leading-relaxed ${todo.completed ? 'text-gray-600' : 'text-gray-400'}`}>
-              {todo.note}
-            </p>
-          )}
+
           <div className="flex items-center gap-2 mt-3 flex-wrap">
-            <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold bg-blue-800 text-blue-200 shrink-0">
-              {todo.createdBy.initials}
-            </div>
-            <span className="text-xs text-gray-500">{todo.createdBy.name}</span>
+            <UserAvatar user={note.createdBy} />
+            <span className="text-xs text-gray-500">{displayName(note.createdBy)}</span>
             <span className="text-gray-700">·</span>
-            <span className="text-xs text-gray-500">{formatRelativeTime(todo.createdAt)}</span>
-            {!todo.completed && (
-              <span className={`ml-auto text-xs font-semibold px-2 py-0.5 rounded-full border ${priority.bg} ${priority.color}`}>
-                {priority.label}
-              </span>
+            <span className="text-xs text-gray-500">{formatRelativeTime(note.createdAt)}</span>
+
+            {!completed && (
+              <>
+                {due && (
+                  <span className={`text-xs font-medium ${due.overdue ? 'text-red-400' : 'text-gray-500'}`}>
+                    · {due.label}
+                  </span>
+                )}
+                <span className={`ml-auto text-xs font-semibold px-2 py-0.5 rounded-full border ${priority.bg} ${priority.color}`}>
+                  {priority.label}
+                </span>
+              </>
             )}
-            {todo.completed && todo.completedAt && (
+
+            {completed && note.completedAt && note.completedBy && (
               <>
                 <span className="text-gray-700">·</span>
+                <UserAvatarWithInitials user={note.completedBy} />
                 <span className="text-xs text-green-700">
-                  Done by {todo.completedBy?.name ?? 'unknown'} · {formatRelativeTime(todo.completedAt)}
+                  {formatRelativeTime(note.completedAt)}
                 </span>
               </>
             )}
@@ -136,17 +200,25 @@ function TodoCard({ todo, onComplete, onUndo }) {
   );
 }
 
-function AddTodoModal({ onClose, onAdd, userName }) {
+function AddNoteModal({ onClose, onAdd, userName }) {
   const [text, setText] = useState('');
-  const [note, setNote] = useState('');
-  const [priority, setPriority] = useState('medium');
+  const [priority, setPriority] = useState('Medium');
+  const [dueDate, setDueDate] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
     if (!text.trim()) return;
-    onAdd({ text: text.trim(), note: note.trim(), priority });
-    onClose();
+    setSaving(true);
+    try {
+      await onAdd({ text: text.trim(), priority, dueDate: dueDate || null });
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   }
+
+  const today = new Date().toISOString().split('T')[0];
 
   return (
     <div
@@ -159,11 +231,7 @@ function AddTodoModal({ onClose, onAdd, userName }) {
       >
         <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-gray-800">
           <h2 className="text-white font-bold">New To-Do</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-white transition-colors"
-            aria-label="Close"
-          >
+          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors" aria-label="Close">
             ✕
           </button>
         </div>
@@ -178,18 +246,10 @@ function AddTodoModal({ onClose, onAdd, userName }) {
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
           />
 
-          <textarea
-            placeholder="Add a note (optional)"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={3}
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors resize-none"
-          />
-
           <div>
             <p className="text-xs text-gray-500 mb-2 uppercase tracking-widest">Priority</p>
             <div className="flex gap-2">
-              {['low', 'medium', 'high'].map((p) => {
+              {['Low', 'Medium', 'High'].map((p) => {
                 const cfg = PRIORITY_CONFIG[p];
                 return (
                   <button
@@ -209,16 +269,25 @@ function AddTodoModal({ onClose, onAdd, userName }) {
             </div>
           </div>
 
-          {userName && (
-            <p className="text-xs text-gray-600">Adding as {userName}</p>
-          )}
+          <div>
+            <p className="text-xs text-gray-500 mb-2 uppercase tracking-widest">Complete by (optional)</p>
+            <input
+              type="date"
+              min={today}
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 transition-colors [color-scheme:dark]"
+            />
+          </div>
+
+          {userName && <p className="text-xs text-gray-600">Adding as {userName}</p>}
 
           <button
             type="submit"
-            disabled={!text.trim()}
+            disabled={!text.trim() || saving}
             className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
           >
-            Add To-Do
+            {saving ? 'Adding…' : 'Add To-Do'}
           </button>
         </form>
       </div>
@@ -227,72 +296,56 @@ function AddTodoModal({ onClose, onAdd, userName }) {
 }
 
 export default function MessagesPage({ user }) {
-  const [todos, setTodos] = useState(INITIAL_TODOS);
+  const { notes, loading, error, add, update } = useNotes(user?.jwt_token);
   const [showModal, setShowModal] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
 
-  const activeTodos = todos.filter((t) => !t.completed);
-  const completedTodos = todos.filter((t) => t.completed);
+  const activeNotes = notes.filter((n) => !n.completedAt);
+  const completedNotes = notes.filter((n) => !!n.completedAt);
 
-  function handleComplete(id) {
-    const firstName = user?.name?.split(' ')[0] ?? 'You';
-    const initials = firstName[0].toUpperCase();
-    setTodos((prev) =>
-      prev.map((t) =>
-        t._id === id
-          ? { ...t, completed: true, completedAt: new Date().toISOString(), completedBy: { name: firstName, initials } }
-          : t
-      )
-    );
-    // TODO: PATCH /api/todos/:id  { completed: true, completedAt, completedBy }
+  const cutoff = Date.now() - ONE_WEEK_MS;
+  const recentCompleted = completedNotes.filter((n) => new Date(n.completedAt).getTime() >= cutoff);
+  const historicalCompleted = completedNotes.filter((n) => new Date(n.completedAt).getTime() < cutoff);
+
+  async function handleComplete(id) {
+    await update(id, { completed: true });
   }
 
-  function handleUndo(id) {
-    setTodos((prev) =>
-      prev.map((t) =>
-        t._id === id ? { ...t, completed: false, completedAt: null, completedBy: null } : t
-      )
-    );
-    // TODO: PATCH /api/todos/:id  { completed: false, completedAt: null, completedBy: null }
-  }
-
-  function handleAdd({ text, note, priority }) {
-    const firstName = user?.name?.split(' ')[0] ?? 'You';
-    const initials = firstName[0].toUpperCase();
-    const newTodo = {
-      _id: Date.now().toString(),
-      text,
-      note,
-      priority,
-      completed: false,
-      completedAt: null,
-      completedBy: null,
-      createdBy: { name: firstName, initials },
-      createdAt: new Date().toISOString(),
-    };
-    setTodos((prev) => [newTodo, ...prev]);
-    // TODO: POST /api/todos  { text, note, priority, createdBy }
+  async function handleUndo(id) {
+    await update(id, { completed: false });
   }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white pb-24">
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <div className="mb-6">
+        <div className="mb-4">
           <h1 className="text-2xl font-bold">To-Do</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            {activeTodos.length === 0
+            {loading
+              ? 'Loading…'
+              : activeNotes.length === 0
               ? 'All caught up'
-              : `${activeTodos.length} item${activeTodos.length !== 1 ? 's' : ''} remaining`}
+              : `${activeNotes.length} item${activeNotes.length !== 1 ? 's' : ''} remaining`}
           </p>
         </div>
 
-        {activeTodos.length === 0 && completedTodos.length === 0 && (
+        {!loading && <PrioritySummary notes={notes} />}
+        {!loading && <CompletionTracker notes={notes} />}
+
+        {error && (
+          <div className="bg-red-950 border border-red-800 text-red-400 text-sm rounded-lg px-4 py-3 mb-6">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && activeNotes.length === 0 && completedNotes.length === 0 && (
           <div className="text-center py-16 text-gray-600">
             <div className="text-4xl mb-3">📋</div>
             <p className="text-sm">No to-dos yet. Hit + to add one.</p>
           </div>
         )}
 
-        {activeTodos.length === 0 && completedTodos.length > 0 && (
+        {!loading && !error && activeNotes.length === 0 && completedNotes.length > 0 && (
           <div className="text-center py-10 text-gray-600">
             <div className="text-3xl mb-2">✓</div>
             <p className="text-sm">All caught up!</p>
@@ -300,21 +353,40 @@ export default function MessagesPage({ user }) {
         )}
 
         <div className="space-y-3">
-          {activeTodos.map((todo) => (
-            <TodoCard key={todo._id} todo={todo} onComplete={handleComplete} onUndo={handleUndo} />
+          {activeNotes.map((note) => (
+            <NoteCard key={note._id} note={note} onComplete={handleComplete} onUndo={handleUndo} />
           ))}
         </div>
 
-        {completedTodos.length > 0 && (
+        {recentCompleted.length > 0 && (
           <div className="mt-8">
             <h2 className="text-xs font-semibold text-gray-600 uppercase tracking-widest mb-3">
-              Completed · {completedTodos.length}
+              Completed · {recentCompleted.length}
             </h2>
             <div className="space-y-2">
-              {completedTodos.map((todo) => (
-                <TodoCard key={todo._id} todo={todo} onComplete={handleComplete} onUndo={handleUndo} />
+              {recentCompleted.map((note) => (
+                <NoteCard key={note._id} note={note} onComplete={handleComplete} onUndo={handleUndo} />
               ))}
             </div>
+          </div>
+        )}
+
+        {historicalCompleted.length > 0 && (
+          <div className="mt-6">
+            <button
+              onClick={() => setShowHistory((v) => !v)}
+              className="flex items-center gap-2 text-xs font-semibold text-gray-600 uppercase tracking-widest hover:text-gray-400 transition-colors w-full mb-3"
+            >
+              <span>{showHistory ? '▾' : '▸'}</span>
+              <span>History · {historicalCompleted.length}</span>
+            </button>
+            {showHistory && (
+              <div className="space-y-2">
+                {historicalCompleted.map((note) => (
+                  <NoteCard key={note._id} note={note} onComplete={handleComplete} onUndo={handleUndo} />
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -328,9 +400,9 @@ export default function MessagesPage({ user }) {
       </button>
 
       {showModal && (
-        <AddTodoModal
+        <AddNoteModal
           onClose={() => setShowModal(false)}
-          onAdd={handleAdd}
+          onAdd={add}
           userName={user?.name?.split(' ')[0]}
         />
       )}

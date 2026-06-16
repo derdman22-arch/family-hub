@@ -24,7 +24,9 @@
       "Bash(grep -Hm1 ^description: 'C:\\\\Users\\\\derdm\\\\Documents\\\\family-hub/.claude/skills/*/SKILL.md')",
       "Bash(node index.js)",
       "Bash(npx --yes screenshot-desktop --filename C:/Users/derdm/AppData/Local/Temp/screenshot.png)",
-      "Bash(nslookup *)"
+      "Bash(nslookup *)",
+      "Bash(npm run *)",
+      "PowerShell(netstat *)"
     ]
   }
 }
