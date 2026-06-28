@@ -91,6 +91,181 @@ const RSVP = {
   needsAction: { label: 'Invited',   dot: 'bg-gray-600' },
 };
 
+function todayStr() {
+  return toDateStr(new Date());
+}
+
+// ─── Add Event Modal ──────────────────────────────────────────────────────────
+
+function AddEventModal({ onClose, onAdd }) {
+  const [title, setTitle] = useState('');
+  const [date, setDate] = useState(todayStr());
+  const [allDay, setAllDay] = useState(false);
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('10:00');
+  const [location, setLocation] = useState('');
+  const [description, setDescription] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!title.trim()) return;
+
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+    const nextDay = (() => {
+      const d = new Date(date + 'T12:00:00');
+      d.setDate(d.getDate() + 1);
+      return toDateStr(d);
+    })();
+
+    const body = {
+      summary: title.trim(),
+      ...(location.trim() && { location: location.trim() }),
+      ...(description.trim() && { description: description.trim() }),
+      ...(allDay
+        ? { start: { date }, end: { date: nextDay } }
+        : {
+            start: { dateTime: `${date}T${startTime}:00`, timeZone },
+            end: { dateTime: `${date}T${endTime}:00`, timeZone },
+          }),
+    };
+
+    setSaving(true);
+    setError(null);
+    try {
+      await onAdd(body);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+      setSaving(false);
+    }
+  }
+
+  const inputClass =
+    'w-full bg-gray-800 border border-gray-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder-gray-600';
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-6 pt-6 pb-4">
+          <h2 className="text-white font-bold text-lg">Add Event</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-white transition-colors"
+            aria-label="Close"
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-6 pb-6 space-y-4">
+          <input
+            className={inputClass}
+            placeholder="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+            autoFocus
+          />
+
+          <div className="flex items-center gap-3">
+            <input
+              type="date"
+              className={inputClass}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              required
+            />
+            <label className="flex items-center gap-2 text-sm text-gray-400 whitespace-nowrap cursor-pointer">
+              <input
+                type="checkbox"
+                checked={allDay}
+                onChange={(e) => setAllDay(e.target.checked)}
+                className="accent-blue-500"
+              />
+              All day
+            </label>
+          </div>
+
+          {!allDay && (
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">Start</label>
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-xs text-gray-500 mb-1">End</label>
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+          )}
+
+          <input
+            className={inputClass}
+            placeholder="Location (optional)"
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+          />
+
+          <textarea
+            className={`${inputClass} resize-none h-20`}
+            placeholder="Description (optional)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+
+          {error && (
+            <p className="text-red-400 text-sm">{error}</p>
+          )}
+
+          <div className="flex gap-3 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2 rounded-lg border border-gray-700 text-gray-400 hover:text-white hover:border-gray-500 text-sm transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !title.trim()}
+              className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
+            >
+              {saving ? 'Saving…' : 'Add Event'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Event Detail Modal ───────────────────────────────────────────────────────
 
 function EventDetailModal({ event, onClose }) {
@@ -438,14 +613,23 @@ function WeekView({ events, weekStart, loading, error, onPrev, onNext, onToday, 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CalendarPage({ accessToken }) {
-  const { events, loading, error, weekStart, prevWeek, nextWeek, goToToday } =
+  const { events, loading, error, weekStart, prevWeek, nextWeek, goToToday, addEvent } =
     useCalendar(accessToken);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold mb-6">Calendar</h1>
+        <div className="flex items-center justify-between mb-6">
+          <h1 className="text-2xl font-bold">Calendar</h1>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <span className="text-base leading-none">+</span> Add Event
+          </button>
+        </div>
         <WeekSummaryWidget
           events={events}
           weekStart={weekStart}
@@ -465,6 +649,9 @@ export default function CalendarPage({ accessToken }) {
       </div>
       {selectedEvent && (
         <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      )}
+      {showAddModal && (
+        <AddEventModal onClose={() => setShowAddModal(false)} onAdd={addEvent} />
       )}
     </div>
   );

@@ -16,9 +16,14 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { text, note, priority, createdBy } = req.body;
+  const { text, note, priority } = req.body;
   try {
-    const todo = await Todo.create({ text, note, priority, createdBy });
+    const todo = await Todo.create({
+      text,
+      note,
+      priority,
+      createdBy: { name: req.user.email, initials: req.user.email.slice(0, 2).toUpperCase() },
+    });
     res.status(201).json(todo);
   } catch {
     res.status(500).json({ error: 'Failed to create todo' });
@@ -26,8 +31,12 @@ router.post('/', async (req, res) => {
 });
 
 router.patch('/:id', async (req, res) => {
+  const { completed, text, note, priority, completedBy, completedAt } = req.body;
+  const patch = { completed, text, note, priority, completedBy, completedAt };
+  Object.keys(patch).forEach((k) => patch[k] === undefined && delete patch[k]);
+
   try {
-    const todo = await Todo.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const todo = await Todo.findByIdAndUpdate(req.params.id, patch, { new: true });
     if (!todo) return res.status(404).json({ error: 'Todo not found' });
     res.json(todo);
   } catch {

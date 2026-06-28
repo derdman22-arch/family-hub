@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchWeekEvents } from '../services/calendarService';
+import { fetchWeekEvents, createEvent } from '../services/calendarService';
 
 function getWeekStart(date) {
   const d = new Date(date);
@@ -14,7 +14,7 @@ export function useCalendar(accessToken) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  useEffect(() => {
+  const refetch = useCallback(() => {
     if (!accessToken) return;
     setLoading(true);
     setError(null);
@@ -23,6 +23,8 @@ export function useCalendar(accessToken) {
       .catch(setError)
       .finally(() => setLoading(false));
   }, [accessToken, weekStart]);
+
+  useEffect(() => { refetch(); }, [refetch]);
 
   const prevWeek = useCallback(
     () => setWeekStart(d => new Date(d.getTime() - 7 * 86400000)),
@@ -34,5 +36,10 @@ export function useCalendar(accessToken) {
   );
   const goToToday = useCallback(() => setWeekStart(getWeekStart(new Date())), []);
 
-  return { events, loading, error, weekStart, prevWeek, nextWeek, goToToday };
+  const addEvent = useCallback(async (eventBody) => {
+    await createEvent(accessToken, eventBody);
+    refetch();
+  }, [accessToken, refetch]);
+
+  return { events, loading, error, weekStart, prevWeek, nextWeek, goToToday, addEvent };
 }

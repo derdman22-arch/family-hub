@@ -1,6 +1,29 @@
 const BASE = 'https://www.googleapis.com/calendar/v3';
 const CALENDAR_ID = process.env.REACT_APP_GOOGLE_CALENDAR_ID || 'primary';
 
+export async function createEvent(accessToken, eventBody) {
+  const res = await fetch(`${BASE}/calendars/${encodeURIComponent(CALENDAR_ID)}/events`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(eventBody),
+  });
+
+  if (res.status === 401) {
+    const err = new Error('Google auth expired — please sign in again.');
+    err.code = 'AUTH_EXPIRED';
+    throw err;
+  }
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data?.error?.message || `Calendar API error ${res.status}`);
+  }
+
+  return res.json();
+}
+
 export async function fetchWeekEvents(accessToken, weekStart) {
   const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
