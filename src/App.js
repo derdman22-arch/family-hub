@@ -4,7 +4,6 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import NavBar from './components/layout/NavBar';
 import GoogleSignIn from './components/auth/GoogleSignIn';
 import HomePage from './pages/HomePage';
-import FinancePage from './pages/FinancePage';
 import CalendarPage from './pages/CalendarPage';
 import StPetePage from './pages/StPetePage';
 import MessagesPage from './pages/MessagesPage';
@@ -29,8 +28,7 @@ function AppShell({ user, onSignOut }) {
       <NavBar user={user} onSignOut={onSignOut} />
       <Routes>
         <Route path="/" element={<HomePage user={user} />} />
-        <Route path="/finance" element={<ComingSoon label="Finance" />} />
-        <Route path="/dashboard" element={<ComingSoon label="Dashboard" />} />
+<Route path="/dashboard" element={<ComingSoon label="Dashboard" />} />
         <Route path="/calendar" element={<CalendarPage accessToken={user.access_token} />} />
         <Route path="/expenses" element={<ComingSoon label="Expenses" />} />
         <Route path="/grocery" element={<ComingSoon label="Grocery List" />} />

@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom';
 
 const SECTIONS = [
-  { label: 'Finance',   path: '/finance',   icon: '📈', desc: 'Portfolio & holdings',    available: true  },
   { label: 'Calendar',  path: '/calendar',  icon: '📅', desc: 'Family schedule',          available: true  },
   { label: 'Messages',  path: '/messages',  icon: '💬', desc: 'Family to-dos',            available: true  },
   { label: 'St. Pete',  path: '/st-pete',   icon: '🌴', desc: 'Local guide & weather',    available: true  },
