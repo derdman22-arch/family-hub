@@ -26,7 +26,13 @@
       "Bash(npx --yes screenshot-desktop --filename C:/Users/derdm/AppData/Local/Temp/screenshot.png)",
       "Bash(nslookup *)",
       "Bash(npm run *)",
-      "PowerShell(netstat *)"
+      "PowerShell(netstat *)",
+      "PowerShell(cd \"C:\\\\Users\\\\derdm\\\\Documents\\\\family-hub\"; Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd 'C:\\\\Users\\\\derdm\\\\Documents\\\\family-hub'; npm start\" -WindowStyle Normal; Write-Output \"Frontend window launched\")",
+      "Skill(claude-in-chrome)",
+      "Bash(git add *)",
+      "Bash(Start-Process powershell *)",
+      "Bash(Write-Output \"Dev server launching...\")",
+      "PowerShell(Start-Process powershell -ArgumentList \"-NoExit\", \"-Command\", \"cd 'C:\\\\Users\\\\derdm\\\\Documents\\\\family-hub'; npm start\" -WindowStyle Normal; Write-Output \"Dev server launching...\")"
     ]
   }
 }
