@@ -1,12 +1,9 @@
 import { useGoogleLogin } from '@react-oauth/google';
 
-export default function GoogleSignIn({ onSuccess, authError }) {
+export default function GoogleSignIn({ onSuccess, authError, signingIn }) {
   const login = useGoogleLogin({
     onSuccess,
-    scope: [
-      'https://www.googleapis.com/auth/spreadsheets.readonly',
-      'https://www.googleapis.com/auth/calendar.events',
-    ].join(' '),
+    scope: 'https://www.googleapis.com/auth/calendar.events',
   });
 
   return (
@@ -19,11 +16,17 @@ export default function GoogleSignIn({ onSuccess, authError }) {
         </p>
         <button
           onClick={() => login()}
-          className="flex items-center gap-3 bg-white text-gray-800 px-6 py-3 rounded-xl font-semibold hover:bg-gray-100 active:bg-gray-200 transition-colors mx-auto shadow-lg"
+          disabled={signingIn}
+          className="flex items-center gap-3 bg-white text-gray-800 px-6 py-3 rounded-xl font-semibold hover:bg-gray-100 active:bg-gray-200 transition-colors mx-auto shadow-lg disabled:opacity-60 disabled:cursor-wait"
         >
           <GoogleIcon />
-          Sign in with Google
+          {signingIn ? 'Signing in…' : 'Sign in with Google'}
         </button>
+        {signingIn && (
+          <p className="text-gray-500 text-xs mt-4">
+            Waking up the server — this can take up to a minute.
+          </p>
+        )}
         {authError && (
           <p className="text-red-400 text-sm mt-6 bg-red-950 border border-red-800 rounded-lg px-4 py-3">
             {authError}

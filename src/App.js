@@ -26,6 +26,8 @@ function AppShell({ user, onSignOut }) {
   return (
     <>
       <NavBar user={user} onSignOut={onSignOut} />
+      {/* Bottom padding clears the fixed tab bar on phones */}
+      <div className="bg-gray-950 pb-[calc(4rem_+_env(safe-area-inset-bottom))] md:pb-0">
       <Routes>
         <Route path="/" element={<HomePage user={user} />} />
 <Route path="/dashboard" element={<ComingSoon label="Dashboard" />} />
@@ -36,6 +38,7 @@ function AppShell({ user, onSignOut }) {
         <Route path="/messages" element={<MessagesPage user={user} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </div>
     </>
   );
 }
@@ -43,24 +46,29 @@ function AppShell({ user, onSignOut }) {
 function AuthenticatedApp() {
   const [user, setUser] = useState(() => {
     try {
-      return JSON.parse(sessionStorage.getItem('fh_user')) || null;
+      const saved = JSON.parse(sessionStorage.getItem('fh_user'));
+      // A session without a server-issued JWT never passed the allowlist check
+      return saved?.jwt_token ? saved : null;
     } catch {
       return null;
     }
   });
   const [authError, setAuthError] = useState(null);
+  const [signingIn, setSigningIn] = useState(false);
 
   async function handleSignIn(tokenResponse) {
     setAuthError(null);
+    setSigningIn(true);
 
-    const profileResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-      headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
-    });
-    const profile = await profileResp.json();
-
-    // Verify the user is in the Atlas allowlist
-    let jwtToken = null;
     try {
+      const profileResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+      });
+      if (!profileResp.ok) throw new Error('Google profile lookup failed');
+      const profile = await profileResp.json();
+
+      // The backend checks the Atlas allowlist and issues the JWT. Fail closed:
+      // if it can't be reached or doesn't return a token, the user stays signed out.
       const resp = await fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -70,26 +78,24 @@ function AuthenticatedApp() {
         setAuthError(`${profile.email} is not authorized to access Family Hub.`);
         return;
       }
-      if (!resp.ok) {
-        setAuthError('Sign-in failed. Please try again.');
-        return;
-      }
+      if (!resp.ok) throw new Error(`Auth server responded ${resp.status}`);
       const { token } = await resp.json();
-      jwtToken = token;
+      if (!token) throw new Error('Auth server returned no token');
+
+      const userData = {
+        access_token: tokenResponse.access_token,
+        name: profile.name,
+        picture: profile.picture,
+        email: profile.email,
+        jwt_token: token,
+      };
+      sessionStorage.setItem('fh_user', JSON.stringify(userData));
+      setUser(userData);
     } catch {
-      // Backend unreachable — allow access without JWT
+      setAuthError("Couldn't verify your account with the server. Please try again in a moment.");
+    } finally {
+      setSigningIn(false);
     }
-
-    const userData = {
-      access_token: tokenResponse.access_token,
-      name: profile.name,
-      picture: profile.picture,
-      email: profile.email,
-      ...(jwtToken && { jwt_token: jwtToken }),
-    };
-
-    sessionStorage.setItem('fh_user', JSON.stringify(userData));
-    setUser(userData);
   }
 
   function handleSignOut() {
@@ -97,7 +103,9 @@ function AuthenticatedApp() {
     setUser(null);
   }
 
-  if (!user) return <GoogleSignIn onSuccess={handleSignIn} authError={authError} />;
+  if (!user) {
+    return <GoogleSignIn onSuccess={handleSignIn} authError={authError} signingIn={signingIn} />;
+  }
 
   return (
     <BrowserRouter>

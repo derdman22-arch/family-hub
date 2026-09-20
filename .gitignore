@@ -25,3 +25,6 @@
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# local Claude Code settings
+/.claude/settings.local.json

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: family-hub-api
+    runtime: node
+    rootDir: server
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"          # the auth route uses the built-in fetch (Node 18+)
+      - key: JWT_SECRET
+        generateValue: true
+      - key: MONGODB_URI
+        sync: false          # set in the Render dashboard, never in git
+      - key: GOOGLE_CLIENT_ID
+        sync: false          # same value as REACT_APP_GOOGLE_CLIENT_ID
+      - key: CLIENT_ORIGIN
+        sync: false          # your Vercel URL, e.g. https://family-hub.vercel.app

@@ -1,25 +1,49 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const { rateLimit } = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
+const { isIP } = require('net');
 const connectDB = require('./config/db');
 const authRoutes = require('./routes/auth');
 const noteRoutes = require('./routes/notes');
-const todoRoutes = require('./routes/todos');
+
+for (const name of ['JWT_SECRET', 'GOOGLE_CLIENT_ID']) {
+  if (!process.env[name]) {
+    console.error(`Missing required environment variable: ${name}`);
+    process.exit(1);
+  }
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+// Render puts one proxy in front of the app
+app.set('trust proxy', 1);
 
 app.use(helmet());
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || 'http://localhost:3000' }));
 app.use(express.json());
 
-const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true, legacyHeaders: false });
+// Requests arrive through Vercel's /api rewrite, so req.ip is a proxy address shared by
+// every user — limiting on it would let one noisy client lock the whole family out.
+// Vercel passes the real client IP in x-vercel-forwarded-for; fall back to req.ip when
+// it's absent (local dev, direct hits).
+function clientIp(req) {
+  const forwarded = String(req.headers['x-vercel-forwarded-for'] || '').split(',')[0].trim();
+  return ipKeyGenerator(isIP(forwarded) ? forwarded : req.ip);
+}
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientIp,
+});
 
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/notes', noteRoutes);
-app.use('/api/todos', todoRoutes);
 
 app.get('/api/health', (_, res) => res.json({ ok: true }));
 

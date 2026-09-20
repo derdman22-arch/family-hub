@@ -393,7 +393,7 @@ export default function MessagesPage({ user }) {
 
       <button
         onClick={() => setShowModal(true)}
-        className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-xl flex items-center justify-center text-2xl font-light transition-all hover:scale-105 active:scale-95"
+        className="fixed bottom-[calc(5rem_+_env(safe-area-inset-bottom))] md:bottom-6 right-4 md:right-6 w-14 h-14 bg-blue-600 hover:bg-blue-500 text-white rounded-full shadow-xl flex items-center justify-center text-2xl font-light transition-all hover:scale-105 active:scale-95"
         aria-label="Add to-do"
       >
         +

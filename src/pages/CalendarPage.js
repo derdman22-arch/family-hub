@@ -158,7 +158,7 @@ function AddEventModal({ onClose, onAdd }) {
       onClick={onClose}
     >
       <div
-        className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md shadow-2xl"
+        className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 pt-6 pb-4">
@@ -561,8 +561,40 @@ function WeekView({ events, weekStart, loading, error, onPrev, onNext, onToday, 
         </div>
       )}
 
+      {/* Phone: one section per day instead of a 7-column grid */}
+      <div className="md:hidden divide-y divide-gray-800">
+        {days.map((day, i) => {
+          const isToday = toDateStr(day) === todayStr;
+          const dayEvents = loading ? [] : eventsForDay(events, day);
+
+          return (
+            <div key={i} className={`px-4 py-3 ${isToday ? 'bg-blue-950/20' : ''}`}>
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full ${
+                    isToday ? 'bg-blue-600 text-white' : 'text-gray-300'
+                  }`}
+                >
+                  {day.getDate()}
+                </span>
+                <span className={`text-xs font-medium ${isToday ? 'text-blue-400' : 'text-gray-500'}`}>
+                  {DAY_NAMES[i]}
+                </span>
+              </div>
+              {loading && <div className="h-9 bg-gray-800/50 rounded-lg animate-pulse" />}
+              {!loading && dayEvents.length === 0 && (
+                <div className="text-xs text-gray-600 pl-9">No events</div>
+              )}
+              {!loading && dayEvents.map((ev, j) => (
+                <EventCard key={j} event={ev} onSelect={onSelectEvent} />
+              ))}
+            </div>
+          );
+        })}
+      </div>
+
       {/* Day columns */}
-      <div className="overflow-x-auto">
+      <div className="hidden md:block overflow-x-auto">
         <div className="grid grid-cols-7 divide-x divide-gray-800 min-w-[600px] min-h-[360px]">
           {days.map((day, i) => {
             const isToday = toDateStr(day) === todayStr;
