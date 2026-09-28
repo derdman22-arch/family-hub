@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/:path*", "destination": "https://family-hub-api.onrender.com/api/:path*" },
+    { "source": "/api/:path*", "destination": "https://family-hub-bqgm.onrender.com/api/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
