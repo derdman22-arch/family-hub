@@ -122,7 +122,7 @@ function CompletionsChart({ days, people, colorOf }) {
 
 export default function OverviewPage({ me, users }) {
   const { todos, loading, update } = useTodos(me.id);
-  const { events, loading: calLoading, error: calError } = useCalendar();
+  const { events, loading: calLoading, error: calError } = useCalendar('day');
   const { stats, error: statsError, reload: reloadStats } = useTodoStats();
   const people = users.length ? users : [me];
   const colorOf = (id) => {

@@ -26,7 +26,9 @@ function eventDateStr(ev) {
 
 function eventsForDay(events, date) {
   const dateStr = toDateStr(date);
-  return events.filter(ev => eventDateStr(ev) === dateStr);
+  return events.filter(ev => (ev.start.date
+    ? ev.start.date <= dateStr && dateStr < ev.end.date // end.date is exclusive
+    : eventDateStr(ev) === dateStr));
 }
 
 function formatEventTime(ev) {
@@ -106,8 +108,8 @@ function toTimeStr(date) {
 }
 
 // Form values for an existing event (edit) or a blank one (add)
-function formDefaults(event) {
-  const blank = { title: '', date: todayStr(), allDay: false, startTime: '09:00', endTime: '10:00', allDaySpan: 1, location: '', description: '' };
+function formDefaults(event, defaultDate) {
+  const blank = { title: '', date: defaultDate || todayStr(), allDay: false, startTime: '09:00', endTime: '10:00', allDaySpan: 1, location: '', description: '' };
   if (!event) return blank;
   const base = {
     ...blank,
@@ -130,8 +132,8 @@ function formDefaults(event) {
 
 // ─── Add / Edit Event Modal ───────────────────────────────────────────────────
 
-function EventFormModal({ event, onClose, onSave }) {
-  const [defaults] = useState(() => formDefaults(event));
+function EventFormModal({ event, defaultDate, onClose, onSave }) {
+  const [defaults] = useState(() => formDefaults(event, defaultDate));
   const [title, setTitle] = useState(defaults.title);
   const [date, setDate] = useState(defaults.date);
   const [allDay, setAllDay] = useState(defaults.allDay);
@@ -578,49 +580,12 @@ function EventCard({ event, onSelect }) {
   );
 }
 
-function WeekView({ events, weekStart, loading, error, onPrev, onNext, onToday, onSelectEvent }) {
+function WeekView({ events, weekStart, loading, onSelectEvent }) {
   const days = getWeekDays(weekStart);
   const todayStr = toDateStr(new Date());
-  const isCurrentWeek = days.some(d => toDateStr(d) === todayStr);
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-      {/* Navigation */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
-        <button
-          onClick={onPrev}
-          className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
-          aria-label="Previous week"
-        >
-          ←
-        </button>
-        <div className="flex items-center gap-3">
-          <h2 className="text-white font-semibold">{formatWeekRange(weekStart)}</h2>
-          {!isCurrentWeek && (
-            <button
-              onClick={onToday}
-              className="text-xs text-blue-400 hover:text-blue-300 bg-blue-900/30 border border-blue-700/40 px-2.5 py-1 rounded-lg transition-colors"
-            >
-              Today
-            </button>
-          )}
-        </div>
-        <button
-          onClick={onNext}
-          className="text-gray-400 hover:text-white p-1.5 rounded-lg hover:bg-gray-800 transition-colors"
-          aria-label="Next week"
-        >
-          →
-        </button>
-      </div>
-
-      {/* Error banner */}
-      {error && (
-        <div className="bg-red-900/40 border-b border-red-800 text-red-300 px-5 py-3 text-sm">
-          Error loading calendar: {error.message}
-        </div>
-      )}
-
       {/* Phone: one section per day instead of a 7-column grid */}
       <div className="md:hidden divide-y divide-gray-800">
         {days.map((day, i) => {
@@ -702,12 +667,199 @@ function WeekView({ events, weekStart, loading, error, onPrev, onNext, onToday, 
   );
 }
 
+// ─── Day View ─────────────────────────────────────────────────────────────────
+
+function DayView({ events, day, loading, onSelectEvent }) {
+  const dayEvents = eventsForDay(events, day)
+    .sort((a, b) => (a.start.dateTime || '').localeCompare(b.start.dateTime || ''));
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+      {loading && (
+        <div className="p-4 space-y-2">
+          {[...Array(3)].map((_, i) => <div key={i} className="h-12 bg-gray-800/50 rounded-lg animate-pulse" />)}
+        </div>
+      )}
+      {!loading && dayEvents.length === 0 && (
+        <p className="text-sm text-gray-500 text-center py-10">Nothing scheduled</p>
+      )}
+      {!loading && dayEvents.length > 0 && (
+        <ul className="divide-y divide-gray-800">
+          {dayEvents.map((ev) => (
+            <li key={ev.id}>
+              <button
+                onClick={() => onSelectEvent(ev)}
+                className="w-full flex gap-4 px-4 py-3.5 text-left hover:bg-gray-800/50 transition-colors"
+              >
+                <span className={`w-20 shrink-0 text-sm ${ev.start.date ? 'text-blue-300' : 'text-gray-400'}`}>
+                  {formatEventTime(ev)}
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-gray-100 font-medium truncate">{ev.summary || '(No title)'}</span>
+                  {ev.start.dateTime && (
+                    <span className="block text-xs text-gray-500">
+                      until {new Date(ev.end.dateTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      {ev.location && ` · ${ev.location}`}
+                    </span>
+                  )}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ─── Month View ───────────────────────────────────────────────────────────────
+
+function MonthView({ events, anchor, rangeStart, rangeEnd, loading, onSelectDay, onSelectEvent }) {
+  const todayStr = toDateStr(new Date());
+  const days = [];
+  for (let d = new Date(rangeStart); d < rangeEnd; d.setDate(d.getDate() + 1)) days.push(new Date(d));
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+      <div className="grid grid-cols-7 border-b border-gray-800">
+        {DAY_NAMES.map((name) => (
+          <div key={name} className="py-2 text-center text-xs font-medium text-gray-500">
+            <span className="md:hidden">{name[0]}</span>
+            <span className="hidden md:inline">{name}</span>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7">
+        {days.map((day, i) => {
+          const key = toDateStr(day);
+          const inMonth = day.getMonth() === anchor.getMonth();
+          const isToday = key === todayStr;
+          const dayEvents = loading ? [] : eventsForDay(events, day);
+          return (
+            <div
+              key={key}
+              className={`min-h-[56px] md:min-h-[104px] border-gray-800 ${i % 7 ? 'border-l' : ''} ${i >= 7 ? 'border-t' : ''} ${inMonth ? '' : 'bg-gray-950/40'}`}
+            >
+              {/* Tapping a day opens it in Day view */}
+              <button
+                onClick={() => onSelectDay(day)}
+                className="w-full h-full flex flex-col items-center md:items-stretch p-1 md:p-1.5 text-left hover:bg-gray-800/40 transition-colors"
+                aria-label={`${day.toDateString()}: ${dayEvents.length} event${dayEvents.length === 1 ? '' : 's'}`}
+              >
+                <span
+                  className={`text-xs md:text-sm font-semibold w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full ${
+                    isToday ? 'bg-blue-600 text-white' : inMonth ? 'text-gray-200' : 'text-gray-600'
+                  }`}
+                >
+                  {day.getDate()}
+                </span>
+                {/* Phone: dots. Desktop: titles. */}
+                {dayEvents.length > 0 && (
+                  <span className="md:hidden flex gap-0.5 mt-1">
+                    {dayEvents.slice(0, 3).map((ev) => (
+                      <span key={ev.id} className={`w-1.5 h-1.5 rounded-full ${ev.start.date ? 'bg-blue-300' : 'bg-gray-400'}`} />
+                    ))}
+                  </span>
+                )}
+                <span className="hidden md:block mt-1 space-y-0.5 w-full">
+                  {dayEvents.slice(0, 3).map((ev) => (
+                    <span
+                      key={ev.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={(e) => { e.stopPropagation(); onSelectEvent(ev); }}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onSelectEvent(ev); } }}
+                      className={`block truncate text-xs rounded px-1 py-0.5 ${
+                        ev.start.date ? 'bg-blue-900/40 text-blue-200' : 'text-gray-300 hover:bg-gray-800'
+                      }`}
+                    >
+                      {ev.start.dateTime && <span className="text-gray-500 mr-1">{formatEventTime(ev).replace(':00', '')}</span>}
+                      {ev.summary || '(No title)'}
+                    </span>
+                  ))}
+                  {dayEvents.length > 3 && (
+                    <span className="block text-xs text-gray-500 px-1">+{dayEvents.length - 3} more</span>
+                  )}
+                </span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Toolbar ──────────────────────────────────────────────────────────────────
+
+const VIEWS = [['day', 'Day'], ['week', 'Week'], ['month', 'Month']];
+
+function viewTitle(view, anchor, rangeStart) {
+  if (view === 'day') return anchor.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  if (view === 'month') return anchor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  return formatWeekRange(rangeStart);
+}
+
+function CalendarToolbar({ view, anchor, rangeStart, rangeEnd, onView, onPrev, onNext, onToday }) {
+  const now = new Date();
+  const showsToday = now >= rangeStart && now < rangeEnd;
+  return (
+    <div className="flex flex-col md:flex-row md:items-center gap-3 mb-4">
+      <div className="flex items-center gap-2 flex-1">
+        <button onClick={onPrev} className="text-gray-400 hover:text-white w-9 h-9 rounded-lg hover:bg-gray-800" aria-label={`Previous ${view}`}>←</button>
+        <h2 className="text-white font-semibold text-center flex-1 md:flex-none md:min-w-[200px]">{viewTitle(view, anchor, rangeStart)}</h2>
+        <button onClick={onNext} className="text-gray-400 hover:text-white w-9 h-9 rounded-lg hover:bg-gray-800" aria-label={`Next ${view}`}>→</button>
+        <button
+          onClick={onToday}
+          className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${
+            showsToday ? 'invisible' : 'text-blue-400 bg-blue-900/30 border-blue-700/40 hover:text-blue-300'
+          }`}
+        >
+          Today
+        </button>
+      </div>
+      <div className="flex bg-gray-900 border border-gray-800 rounded-xl p-1" role="tablist" aria-label="Calendar view">
+        {VIEWS.map(([id, label]) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={view === id}
+            onClick={() => onView(id)}
+            className={`flex-1 md:flex-none px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              view === id ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
+
+const VIEW_KEY = 'fh_calendar_view';
+
+function savedView() {
+  try {
+    const v = localStorage.getItem(VIEW_KEY);
+    return VIEWS.some(([id]) => id === v) ? v : 'week';
+  } catch {
+    return 'week';
+  }
+}
 
 export default function CalendarPage() {
   const {
-    events, loading, error, weekStart, prevWeek, nextWeek, goToToday, addEvent, editEvent, removeEvent,
-  } = useCalendar();
+    events, loading, error, view, setView, anchor, rangeStart, rangeEnd,
+    prev, next, goToToday, goToDay, addEvent, editEvent, removeEvent,
+  } = useCalendar(savedView());
+
+  function changeView(v) {
+    setView(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch {}
+  }
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
@@ -724,22 +876,46 @@ export default function CalendarPage() {
             <span className="text-base leading-none">+</span> Add Event
           </button>
         </div>
-        <WeekSummaryWidget
-          events={events}
-          weekStart={weekStart}
-          loading={loading}
-          onSelectEvent={setSelectedEvent}
-        />
-        <WeekView
-          events={events}
-          weekStart={weekStart}
-          loading={loading}
-          error={error}
-          onPrev={prevWeek}
-          onNext={nextWeek}
+        <CalendarToolbar
+          view={view}
+          anchor={anchor}
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+          onView={changeView}
+          onPrev={prev}
+          onNext={next}
           onToday={goToToday}
-          onSelectEvent={setSelectedEvent}
         />
+        {error && (
+          <div className="bg-red-900/40 border border-red-800 text-red-300 rounded-xl px-4 py-3 text-sm mb-4">
+            Error loading calendar: {error.message}
+          </div>
+        )}
+        {view === 'day' && (
+          <DayView events={events} day={anchor} loading={loading} onSelectEvent={setSelectedEvent} />
+        )}
+        {view === 'week' && (
+          <>
+            <WeekSummaryWidget
+              events={events}
+              weekStart={rangeStart}
+              loading={loading}
+              onSelectEvent={setSelectedEvent}
+            />
+            <WeekView events={events} weekStart={rangeStart} loading={loading} onSelectEvent={setSelectedEvent} />
+          </>
+        )}
+        {view === 'month' && (
+          <MonthView
+            events={events}
+            anchor={anchor}
+            rangeStart={rangeStart}
+            rangeEnd={rangeEnd}
+            loading={loading}
+            onSelectDay={goToDay}
+            onSelectEvent={setSelectedEvent}
+          />
+        )}
       </div>
       {selectedEvent && (
         <EventDetailModal
@@ -750,7 +926,11 @@ export default function CalendarPage() {
         />
       )}
       {showAddModal && (
-        <EventFormModal onClose={() => setShowAddModal(false)} onSave={addEvent} />
+        <EventFormModal
+          defaultDate={view === 'day' ? toDateStr(anchor) : undefined}
+          onClose={() => setShowAddModal(false)}
+          onSave={addEvent}
+        />
       )}
       {editingEvent && (
         <EventFormModal
