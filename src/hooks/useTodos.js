@@ -29,8 +29,8 @@ export function useTodos(myId) {
 
   const replace = (updated) => setTodos((prev) => prev.map((t) => (t._id === updated._id ? updated : t)));
 
-  async function add(text, assignedTo) {
-    const todo = await createTodo({ text, assignedTo });
+  async function add(text, assignedTo, dueDate = null) {
+    const todo = await createTodo({ text, assignedTo, dueDate });
     setTodos((prev) => [todo, ...prev]);
   }
 

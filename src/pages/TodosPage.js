@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useTodos } from '../hooks/useTodos';
 import NotificationsBanner from '../components/NotificationsBanner';
+import {
+  toDateStr, addDays, todayStr, dueKey, dueInfo, DUE_TONE_CLASS, sortOpenTodos,
+} from '../utils/dates';
 
 function firstName(user) {
   return (user?.name || user?.email || '?').split(' ')[0];
@@ -17,23 +20,48 @@ function timeAgo(isoString) {
   return new Date(isoString).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+const chipClass = (active) => `px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
+  active ? 'bg-blue-600 border-blue-500 text-white' : 'border-gray-700 text-gray-400 hover:text-white'
+}`;
+
 function PersonChips({ people, value, onChange, me }) {
   return (
     <div className="flex gap-1.5">
       {people.map((p) => (
-        <button
-          key={p.id}
-          type="button"
-          onClick={() => onChange(p.id)}
-          className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${
-            value === p.id
-              ? 'bg-blue-600 border-blue-500 text-white'
-              : 'border-gray-700 text-gray-400 hover:text-white'
-          }`}
-        >
+        <button key={p.id} type="button" onClick={() => onChange(p.id)} className={chipClass(value === p.id)}>
           {p.id === me.id ? 'Me' : firstName(p)}
         </button>
       ))}
+    </div>
+  );
+}
+
+// Quick picks for a complete-by date, plus a full date picker
+function DueDatePicker({ value, onChange }) {
+  const today = todayStr();
+  const tomorrow = toDateStr(addDays(new Date(), 1));
+  const custom = value && value !== today && value !== tomorrow;
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <button type="button" onClick={() => onChange(today)} className={chipClass(value === today)}>Today</button>
+      <button type="button" onClick={() => onChange(tomorrow)} className={chipClass(value === tomorrow)}>Tomorrow</button>
+      {/* The native date input sits invisibly on top so a tap opens the iOS picker */}
+      <label className={`${chipClass(custom)} relative cursor-pointer`}>
+        {custom ? new Date(`${value}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : 'Pick date'}
+        <input
+          type="date"
+          aria-label="Pick a complete-by date"
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          value={value || ''}
+          min={today}
+          onChange={(e) => onChange(e.target.value || null)}
+        />
+      </label>
+      {value && (
+        <button type="button" onClick={() => onChange(null)} className="text-xs text-gray-500 hover:text-gray-300 px-1">
+          No date
+        </button>
+      )}
     </div>
   );
 }
@@ -44,6 +72,7 @@ function TodoItem({ todo, me, people, showOwner, onUpdate, onRemove }) {
   const done = !!todo.completedAt;
   const owner = people.find((p) => p.id === todo.assignedTo);
   const fromSomeoneElse = todo.createdBy?.userId && todo.createdBy.userId !== todo.assignedTo;
+  const due = !done && dueInfo(todo.dueDate);
 
   function save(e) {
     e.preventDefault();
@@ -68,6 +97,10 @@ function TodoItem({ todo, me, people, showOwner, onUpdate, onRemove }) {
           onChange={(e) => setText(e.target.value)}
           autoFocus
         />
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          Complete by
+          <DueDatePicker value={dueKey(todo.dueDate)} onChange={(d) => onUpdate(todo._id, { dueDate: d })} />
+        </div>
         <div className="flex items-center justify-between gap-2 flex-wrap">
           {people.length > 1 ? (
             <PersonChips
@@ -95,7 +128,9 @@ function TodoItem({ todo, me, people, showOwner, onUpdate, onRemove }) {
   }
 
   return (
-    <div className="flex items-start gap-3 bg-gray-900 border border-gray-800 rounded-xl px-3 py-3">
+    <div className={`flex items-start gap-3 bg-gray-900 border rounded-xl px-3 py-3 ${
+      due?.tone === 'overdue' ? 'border-red-900/70' : 'border-gray-800'
+    }`}>
       <button
         onClick={() => onUpdate(todo._id, { completed: !done })}
         className={`mt-0.5 w-6 h-6 shrink-0 rounded-full border-2 flex items-center justify-center transition-colors ${
@@ -107,7 +142,10 @@ function TodoItem({ todo, me, people, showOwner, onUpdate, onRemove }) {
       </button>
       <button onClick={() => { setText(todo.text); setEditing(true); }} className="flex-1 min-w-0 text-left">
         <div className={`break-words ${done ? 'text-gray-500 line-through' : 'text-gray-100'}`}>{todo.text}</div>
-        <div className="text-xs text-gray-500 mt-0.5">{meta}</div>
+        <div className="text-xs text-gray-500 mt-0.5">
+          {due && <span className={`font-medium ${DUE_TONE_CLASS[due.tone]}`}>{due.label}{meta && ' · '}</span>}
+          {meta}
+        </div>
       </button>
     </div>
   );
@@ -120,6 +158,8 @@ export default function TodosPage({ me, users }) {
   const [view, setView] = useState(me.id); // a user id, or 'all'
   const [text, setText] = useState('');
   const [assignee, setAssignee] = useState(me.id);
+  const [dueDate, setDueDate] = useState(null);
+  const [showDate, setShowDate] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState(null);
   const [showDone, setShowDone] = useState(false);
@@ -135,8 +175,11 @@ export default function TodosPage({ me, users }) {
     setAdding(true);
     setAddError(null);
     try {
-      await add(text.trim(), assignee);
+      await add(text.trim(), assignee, dueDate);
       setText('');
+      // Back to a quick, undated add for the next one
+      setDueDate(null);
+      setShowDate(false);
     } catch (err) {
       setAddError(err.message);
     } finally {
@@ -145,7 +188,7 @@ export default function TodosPage({ me, users }) {
   }
 
   const inView = todos.filter((t) => view === 'all' || t.assignedTo === view);
-  const open = inView.filter((t) => !t.completedAt);
+  const open = sortOpenTodos(inView.filter((t) => !t.completedAt));
   const done = inView
     .filter((t) => t.completedAt)
     .sort((a, b) => b.completedAt.localeCompare(a.completedAt));
@@ -178,10 +221,26 @@ export default function TodosPage({ me, users }) {
               Add
             </button>
           </div>
-          {people.length > 1 && (
+          <div className="flex items-center gap-2 mt-2 text-xs text-gray-500 flex-wrap">
+            {people.length > 1 && (
+              <>
+                For
+                <PersonChips people={people} me={me} value={assignee} onChange={setAssignee} />
+              </>
+            )}
+            {!showDate && (
+              <button type="button" onClick={() => setShowDate(true)} className={`${chipClass(false)} ml-auto`}>
+                + Complete by
+              </button>
+            )}
+          </div>
+          {showDate && (
             <div className="flex items-center gap-2 mt-2 text-xs text-gray-500">
-              For
-              <PersonChips people={people} me={me} value={assignee} onChange={setAssignee} />
+              Complete by
+              <DueDatePicker
+                value={dueDate}
+                onChange={(d) => { setDueDate(d); if (!d) setShowDate(false); }}
+              />
             </div>
           )}
           {addError && <p className="text-red-400 text-sm mt-2">{addError}</p>}

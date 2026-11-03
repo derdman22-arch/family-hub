@@ -5,6 +5,7 @@ const NAV_ITEMS = [
   { label: 'To-dos',   path: '/',         icon: '✅' },
   { label: 'Calendar', path: '/calendar', icon: '📅' },
   { label: 'Grocery',  path: '/grocery',  icon: '🛒' },
+  { label: 'Overview', path: '/overview', icon: '📊' },
 ];
 
 export default function NavBar({ user, onSignOut }) {
@@ -66,7 +67,7 @@ export default function NavBar({ user, onSignOut }) {
       </nav>
 
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-gray-900 border-t border-gray-800 pb-[env(safe-area-inset-bottom)]">
-        <div className="grid grid-cols-3">
+        <div className="grid grid-cols-4">
           {NAV_ITEMS.map((item) => (
             <Link
               key={item.path}

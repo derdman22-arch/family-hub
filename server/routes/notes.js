@@ -31,6 +31,19 @@ function firstName(name, fallback) {
   return (name || fallback || 'Someone').split(' ')[0];
 }
 
+// Due dates are calendar days ("YYYY-MM-DD"). Stored at noon UTC so the day
+// doesn't shift in any US timezone. Returns undefined for invalid input.
+function parseDueDate(value) {
+  if (value === null || value === '') return null;
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
+  const d = new Date(`${value}T12:00:00Z`);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+function formatDue(date) {
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 async function validAssignee(userId) {
   if (!userId) return null;
   return (await User.exists({ _id: userId })) ? String(userId) : undefined;
@@ -48,17 +61,46 @@ router.get('/', async (req, res) => {
   }
 });
 
+// GET /api/notes/stats — completions from the last 90 days plus all-time
+// counts per person. The client buckets them by day in its own timezone.
+router.get('/stats', async (req, res) => {
+  try {
+    const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const [recent, totals] = await Promise.all([
+      Note.find({ completedAt: { $gte: since } }, 'completedAt completedBy.userId createdAt dueDate').lean(),
+      Note.aggregate([
+        { $match: { completedAt: { $ne: null } } },
+        { $group: { _id: '$completedBy.userId', count: { $sum: 1 } } },
+      ]),
+    ]);
+    res.json({
+      completions: recent.map((n) => ({
+        completedAt: n.completedAt,
+        completedBy: n.completedBy?.userId || null,
+        createdAt: n.createdAt,
+        dueDate: n.dueDate || null,
+      })),
+      totals: Object.fromEntries(totals.filter((t) => t._id).map((t) => [t._id, t.count])),
+    });
+  } catch {
+    res.status(500).json({ error: 'Failed to load stats' });
+  }
+});
+
 router.post('/', async (req, res) => {
   const { text, assignedTo } = req.body;
   if (typeof text !== 'string' || !text.trim()) {
     return res.status(400).json({ error: 'text required' });
   }
+  const dueDate = parseDueDate(req.body.dueDate ?? null);
+  if (dueDate === undefined) return res.status(400).json({ error: 'Invalid due date' });
   try {
     const assignee = (await validAssignee(assignedTo)) ?? req.user.userId;
     const note = await Note.create({
       id: randomUUID(),
       text,
       assignedTo: assignee,
+      dueDate,
       createdBy: { userId: req.user.userId, username: req.user.email },
     });
     const [enriched] = await enrichWithUsers([note]);
@@ -68,7 +110,7 @@ router.post('/', async (req, res) => {
     const forYou = assignee !== req.user.userId;
     notifyOthers(req.user.userId, {
       title: forYou ? `${who} added a to-do for you` : `${who} added a to-do`,
-      body: note.text,
+      body: dueDate ? `${note.text} · due ${formatDue(dueDate)}` : note.text,
     });
   } catch (err) {
     console.error('Create note error:', err.message);
@@ -87,6 +129,11 @@ router.patch('/:id', async (req, res) => {
     patch.completedBy = null;
   }
   if (typeof text === 'string' && text.trim()) patch.text = text;
+  if (req.body.dueDate !== undefined) {
+    const dueDate = parseDueDate(req.body.dueDate);
+    if (dueDate === undefined) return res.status(400).json({ error: 'Invalid due date' });
+    patch.dueDate = dueDate;
+  }
 
   try {
     if (assignedTo !== undefined) {

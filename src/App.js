@@ -5,6 +5,7 @@ import SignInScreen from './components/auth/SignInScreen';
 import TodosPage from './pages/TodosPage';
 import CalendarPage from './pages/CalendarPage';
 import GroceryPage from './pages/GroceryPage';
+import OverviewPage from './pages/OverviewPage';
 import { api, getSession, clearSession } from './services/api';
 import { completeGoogleSignIn } from './services/authService';
 import {
@@ -32,6 +33,7 @@ function AppShell({ session, onSignOut }) {
           <Route path="/" element={<TodosPage me={me} users={users} />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/grocery" element={<GroceryPage />} />
+          <Route path="/overview" element={<OverviewPage me={me} users={users} />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </div>
