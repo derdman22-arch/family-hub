@@ -12,52 +12,43 @@ npm run build      # production build
 npm test -- --watchAll=false  # run tests once (CI mode)
 ```
 
-Known issue: `src/App.test.js` fails because Jest can't resolve `react-router-dom` v7 (predates the current work).
+Known issue: `src/App.test.js` is the CRA boilerplate test and fails (Jest can't resolve `react-router-dom` v7).
+
+## What it is
+
+A home-screen web app (PWA) for two family members on iPhones: the shared Google family calendar, a to-do list per person, and a shared grocery list. Adding or completing a to-do sends a push notification to the other person.
 
 ## Environment Variables
 
-Copy `.env.example` → `.env.local` (frontend) and `server/.env.example` → `server/.env` (API) before running locally. Both `.env` files are gitignored.
+Copy `.env.example` → `.env.local` (frontend) and `server/.env.example` → `server/.env` (API) before running locally. Both are gitignored. `server/.env.example` documents every server variable.
 
-**Frontend** (`REACT_APP_*` values ship in the public JS bundle — never put secrets here):
+**Frontend** — only `REACT_APP_GOOGLE_CLIENT_ID` (ships in the public bundle; never put secrets in `REACT_APP_*`).
 
-| Variable | Purpose |
-|---|---|
-| `REACT_APP_GOOGLE_CLIENT_ID` | Google OAuth 2.0 client ID (Web application type) |
-| `REACT_APP_GOOGLE_CALENDAR_ID` | Calendar to display (defaults to `primary`) |
-| `REACT_APP_GOOGLE_PLACES_KEY` | Google Places API (New) key — restrict by HTTP referrer + Places API in Cloud Console |
-
-**Server** (`server/.env`, set in the Render dashboard in production):
-
-| Variable | Purpose |
-|---|---|
-| `MONGODB_URI` | Atlas connection string (`prod` database, direct non-SRV format) |
-| `JWT_SECRET` | JWT signing secret — server refuses to start without it |
-| `GOOGLE_CLIENT_ID` | Must equal `REACT_APP_GOOGLE_CLIENT_ID`; server refuses to start without it |
-| `CLIENT_ORIGIN` | Allowed CORS origin (defaults to `http://localhost:3000`) |
-| `PORT` | Optional, defaults to 5000 |
+**Server** (`server/.env`, Render dashboard in production): `MONGODB_URI` (Atlas `prod` database, direct non-SRV format), `JWT_SECRET`, `GOOGLE_CLIENT_ID` (must equal the frontend's), `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY` (32 bytes base64; encrypts stored refresh tokens), `GOOGLE_CALENDAR_ID`, `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (web push; optional — push is disabled without them), `CLIENT_ORIGIN` (comma-separated allowed origins), `PORT`. The server refuses to start without the first five.
 
 ## Architecture
 
-**Auth flow** — `App.js` wraps the app in `GoogleOAuthProvider`. On Google sign-in, `AuthenticatedApp` POSTs the access token to `/api/auth/google`. The server (`server/routes/auth.js`) checks with Google that the token was issued to *this* client ID and that the email is verified, then looks the email up in the MongoDB `users` collection. There is no auto-create: **only emails already in that collection can sign in**. On success it returns a 7-day JWT. The frontend stores `{ access_token, name, picture, email, jwt_token }` in `sessionStorage` under `fh_user`. Sign-in **fails closed** — if the API is unreachable or returns anything but a token, the user stays signed out, and a stored session without a `jwt_token` is discarded on load. `server/middleware/auth.js` (`requireAuth`) verifies the JWT *and* re-checks the user still exists, so removing someone from the collection cuts them off immediately. To add a family member, insert a `users` document with their (lowercase) Google email.
+**Auth flow** — Google authorization-code flow with a full-page redirect (popups are unreliable in iOS home-screen apps). `authService.startGoogleSignIn` sends the browser to Google with a random `state` in `localStorage`; Google redirects to `/auth/callback`, which `App.js` handles before the router: it checks `state` and POSTs `{ code, redirect_uri }` to `/api/auth/google`. The server (`server/routes/auth.js`) only accepts redirect URIs of `CLIENT_ORIGIN` + `/auth/callback`, exchanges the code with the client secret, and looks the email up in the MongoDB `users` collection. There is no auto-create: **only emails already in that collection can sign in**. Google only returns a refresh token on the consent screen, so if the user has none stored the server replies `{ needsConsent: true }` and the frontend restarts with `prompt=consent`. The refresh token is stored AES-GCM-encrypted on the user (`googleRefreshToken`, `select: false`). The server returns a 60-day JWT; the frontend keeps `{ token, user }` in `localStorage` under `fh_session`. `requireAuth` verifies the JWT *and* re-checks the user still exists. Any 401 from the API (including `GOOGLE_REAUTH` when Google rejects the refresh token) clears the session and shows the sign-in screen with the reason. To add a family member, insert a `users` document with their lowercase Google email.
 
-**Backend** (`server/`) — Express + Mongoose. Routes: `/api/auth` (rate-limited, keyed on the client IP Vercel forwards), `/api/notes` (behind `requireAuth`), `/api/health`. Notes are shared by all family members by design.
+**Backend** (`server/`) — Express + Mongoose. Routes, all behind `requireAuth` except auth and health:
+- `/api/auth` (rate-limited, keyed on the client IP Vercel forwards)
+- `/api/calendar/events` — proxies Google Calendar (list/create/patch/delete) as the requesting user via `lib/google.js`, which refreshes and caches access tokens in memory
+- `/api/notes` — to-dos (model `Note`, collection `notes`). `assignedTo` is whose list it's on; older notes without it belong to their creator (`Note.openFor`). Completed to-dos older than 30 days aren't returned. Creating or completing one calls `lib/push.notifyOthers`, which pushes to every other user's devices with their open-to-do count as the badge
+- `/api/grocery` — one shared list (`GroceryItem`)
+- `/api/push` — VAPID public key, subscribe/unsubscribe (`PushSubscription`, one per device)
+- `/api/users` — family members, for the per-person to-do tabs
+- `/api/health`
 
-**Data layer** — A thin `services/` layer (pure async functions calling external APIs or the backend) consumed by `hooks/` (React state wrappers):
-- `calendarService` / `useCalendar` — Google Calendar API, using the user's Google `access_token` directly (read + create events).
-- `todosService` / `useTodos` (exports `useNotes`) — the backend `/api/notes` endpoint, using the `jwt_token`. Despite the file name this is the notes API; it powers the Messages page.
-- `weatherService` / `useWeather` — Open-Meteo, no auth.
-- `placesService` / `useActivities` — Google Places API (New). Both St. Pete hooks are fire-and-forget on mount with no caching.
+**Frontend data layer** — `services/` are thin async functions over `services/api.js` (adds the JWT, handles 401s); `hooks/` wrap them in React state. `useLiveRefresh` reloads data when the app returns to the foreground or the service worker relays a push (`{ type: 'refresh' }`). To-do and grocery changes are applied optimistically and reloaded on failure.
 
-**Routing** — All routes are declared in `AppShell` inside `App.js`: `/` Home, `/calendar`, `/messages` (shared to-do list), `/st-pete`. `/dashboard`, `/expenses` and `/grocery` render a `<ComingSoon>` placeholder. Unknown paths redirect to `/`.
+**PWA / push** — `public/sw.js` is a plain service worker (no offline caching): shows notifications, sets the app badge from the push payload, and focuses the app on tap. `services/pushService.js` registers it, subscribes (permission must be requested directly from a tap on iOS), re-syncs the subscription on launch, and unsubscribes on sign-out. iOS only supports push for apps added to the Home Screen (16.4+); `NotificationsBanner` explains that in Safari.
+
+**Routing** — `AppShell` in `App.js`: `/` To-dos, `/calendar`, `/grocery`. Unknown paths redirect to `/`.
 
 **Styling** — Tailwind CSS v3, dark theme (`bg-gray-950` base). No CSS modules; all styles are utility classes inline. `src/index.css` holds the Tailwind directives plus a few global rules.
 
-**Mobile** — The `md` breakpoint (768px) is the phone/desktop switch. Below it, `NavBar` shows a fixed bottom tab bar (the top bar keeps only the logo and account controls) and the Calendar week renders as a per-day agenda list instead of a 7-column grid. `AppShell` pads the bottom of the page to clear the tab bar, and fixed-position elements use `env(safe-area-inset-bottom)` for the iPhone home bar. Inputs are forced to 16px on small screens to stop iOS Safari zooming on focus. New pages should not assume a fixed bottom offset.
+**Mobile** — The `md` breakpoint (768px) is the phone/desktop switch. Below it, `NavBar` shows a fixed bottom tab bar and the Calendar week renders as a per-day agenda list (the week summary is desktop-only). `AppShell` pads the bottom of the page to clear the tab bar, and fixed-position elements use `env(safe-area-inset-bottom)` for the iPhone home bar. Inputs are forced to 16px on small screens to stop iOS Safari zooming on focus.
 
 ## Deployment
 
-Frontend on Vercel, API on Render, database on MongoDB Atlas. `vercel.json` rewrites `/api/*` to the Render service (the frontend calls relative `/api/...` URLs; the CRA `"proxy"` setting only exists in dev) and sets security headers. See `DEPLOY.md` for the full guide.
-
-## Planned but not yet built
-
-Dashboard, Expenses and Grocery (currently `<ComingSoon>`). The St. Pete page also has placeholder widgets for Restaurants and Events (defined in the `WIDGETS` array in `StPetePage.js`).
+Frontend on Vercel, API on Render (Starter instance — it must not sleep), database on MongoDB Atlas. `vercel.json` rewrites `/api/*` to the Render service (the frontend calls relative `/api/...` URLs; the CRA `"proxy"` setting only exists in dev) and sets security headers. The Google OAuth client needs `<origin>/auth/callback` as an authorized redirect URI for each origin. See `DEPLOY.md` for the full guide.

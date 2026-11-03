@@ -95,16 +95,50 @@ function todayStr() {
   return toDateStr(new Date());
 }
 
-// ─── Add Event Modal ──────────────────────────────────────────────────────────
+function shiftDateStr(dateStr, days) {
+  const d = new Date(dateStr + 'T12:00:00');
+  d.setDate(d.getDate() + days);
+  return toDateStr(d);
+}
 
-function AddEventModal({ onClose, onAdd }) {
-  const [title, setTitle] = useState('');
-  const [date, setDate] = useState(todayStr());
-  const [allDay, setAllDay] = useState(false);
-  const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('10:00');
-  const [location, setLocation] = useState('');
-  const [description, setDescription] = useState('');
+function toTimeStr(date) {
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+// Form values for an existing event (edit) or a blank one (add)
+function formDefaults(event) {
+  const blank = { title: '', date: todayStr(), allDay: false, startTime: '09:00', endTime: '10:00', allDaySpan: 1, location: '', description: '' };
+  if (!event) return blank;
+  const base = {
+    ...blank,
+    title: event.summary || '',
+    location: event.location || '',
+    description: event.description ? stripHtml(event.description) : '',
+  };
+  if (event.start.date) {
+    const days = (new Date(event.end.date + 'T12:00:00') - new Date(event.start.date + 'T12:00:00')) / 86400000;
+    return { ...base, date: event.start.date, allDay: true, allDaySpan: Math.max(1, Math.round(days)) };
+  }
+  const start = new Date(event.start.dateTime);
+  return {
+    ...base,
+    date: toDateStr(start),
+    startTime: toTimeStr(start),
+    endTime: toTimeStr(new Date(event.end.dateTime)),
+  };
+}
+
+// ─── Add / Edit Event Modal ───────────────────────────────────────────────────
+
+function EventFormModal({ event, onClose, onSave }) {
+  const [defaults] = useState(() => formDefaults(event));
+  const [title, setTitle] = useState(defaults.title);
+  const [date, setDate] = useState(defaults.date);
+  const [allDay, setAllDay] = useState(defaults.allDay);
+  const [startTime, setStartTime] = useState(defaults.startTime);
+  const [endTime, setEndTime] = useState(defaults.endTime);
+  const [location, setLocation] = useState(defaults.location);
+  const [description, setDescription] = useState(defaults.description);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -120,28 +154,26 @@ function AddEventModal({ onClose, onAdd }) {
 
     const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    const nextDay = (() => {
-      const d = new Date(date + 'T12:00:00');
-      d.setDate(d.getDate() + 1);
-      return toDateStr(d);
-    })();
+    // An end time at or before the start means the event runs past midnight
+    const endDate = endTime <= startTime ? shiftDateStr(date, 1) : date;
 
     const body = {
       summary: title.trim(),
-      ...(location.trim() && { location: location.trim() }),
-      ...(description.trim() && { description: description.trim() }),
+      // Empty strings rather than omitting, so editing can clear these fields
+      location: location.trim(),
+      description: description.trim(),
       ...(allDay
-        ? { start: { date }, end: { date: nextDay } }
+        ? { start: { date }, end: { date: shiftDateStr(date, defaults.allDaySpan) } }
         : {
             start: { dateTime: `${date}T${startTime}:00`, timeZone },
-            end: { dateTime: `${date}T${endTime}:00`, timeZone },
+            end: { dateTime: `${endDate}T${endTime}:00`, timeZone },
           }),
     };
 
     setSaving(true);
     setError(null);
     try {
-      await onAdd(body);
+      await onSave(body);
       onClose();
     } catch (err) {
       setError(err.message);
@@ -162,7 +194,7 @@ function AddEventModal({ onClose, onAdd }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-6 pt-6 pb-4">
-          <h2 className="text-white font-bold text-lg">Add Event</h2>
+          <h2 className="text-white font-bold text-lg">{event ? 'Edit Event' : 'Add Event'}</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-white transition-colors"
@@ -257,7 +289,7 @@ function AddEventModal({ onClose, onAdd }) {
               disabled={saving || !title.trim()}
               className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors"
             >
-              {saving ? 'Saving…' : 'Add Event'}
+              {saving ? 'Saving…' : event ? 'Save' : 'Add Event'}
             </button>
           </div>
         </form>
@@ -268,7 +300,23 @@ function AddEventModal({ onClose, onAdd }) {
 
 // ─── Event Detail Modal ───────────────────────────────────────────────────────
 
-function EventDetailModal({ event, onClose }) {
+function EventDetailModal({ event, onClose, onEdit, onDelete }) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleDelete() {
+    if (!window.confirm(`Delete "${event.summary || 'this event'}" from the calendar?`)) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      await onDelete(event.id);
+      onClose();
+    } catch (err) {
+      setError(err.message);
+      setDeleting(false);
+    }
+  }
+
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -374,9 +422,10 @@ function EventDetailModal({ event, onClose }) {
             </div>
           )}
 
-          {/* Open in Google Calendar */}
-          {event.htmlLink && (
-            <div className="pt-2 border-t border-gray-800">
+          {error && <p className="text-red-400 text-sm">{error}</p>}
+
+          <div className="flex items-center gap-2 pt-3 border-t border-gray-800">
+            {event.htmlLink && (
               <a
                 href={event.htmlLink}
                 target="_blank"
@@ -385,8 +434,21 @@ function EventDetailModal({ event, onClose }) {
               >
                 Open in Google Calendar ↗
               </a>
-            </div>
-          )}
+            )}
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="ml-auto px-3 py-1.5 rounded-lg text-sm text-red-400 hover:bg-red-950 disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete'}
+            </button>
+            <button
+              onClick={() => onEdit(event)}
+              className="px-3 py-1.5 rounded-lg text-sm bg-blue-600 hover:bg-blue-500 text-white font-medium"
+            >
+              Edit
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -410,7 +472,7 @@ function WeekSummaryWidget({ events, weekStart, loading, onSelectEvent }) {
   });
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 mb-5">
+    <div className="hidden md:block bg-gray-900 border border-gray-800 rounded-2xl p-5 mb-5">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">
           Week at a Glance
@@ -555,9 +617,7 @@ function WeekView({ events, weekStart, loading, error, onPrev, onNext, onToday, 
       {/* Error banner */}
       {error && (
         <div className="bg-red-900/40 border-b border-red-800 text-red-300 px-5 py-3 text-sm">
-          {error.code === 'AUTH_EXPIRED' || error.code === 'PERMISSION_DENIED'
-            ? error.message
-            : `Error loading calendar: ${error.message}`}
+          Error loading calendar: {error.message}
         </div>
       )}
 
@@ -644,16 +704,18 @@ function WeekView({ events, weekStart, loading, error, onPrev, onNext, onToday, 
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function CalendarPage({ accessToken }) {
-  const { events, loading, error, weekStart, prevWeek, nextWeek, goToToday, addEvent } =
-    useCalendar(accessToken);
+export default function CalendarPage() {
+  const {
+    events, loading, error, weekStart, prevWeek, nextWeek, goToToday, addEvent, editEvent, removeEvent,
+  } = useCalendar();
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
+      <div className="max-w-7xl mx-auto px-4 py-5 md:py-8">
+        <div className="flex items-center justify-between mb-4 md:mb-6">
           <h1 className="text-2xl font-bold">Calendar</h1>
           <button
             onClick={() => setShowAddModal(true)}
@@ -680,10 +742,22 @@ export default function CalendarPage({ accessToken }) {
         />
       </div>
       {selectedEvent && (
-        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+        <EventDetailModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+          onEdit={(ev) => { setSelectedEvent(null); setEditingEvent(ev); }}
+          onDelete={removeEvent}
+        />
       )}
       {showAddModal && (
-        <AddEventModal onClose={() => setShowAddModal(false)} onAdd={addEvent} />
+        <EventFormModal onClose={() => setShowAddModal(false)} onSave={addEvent} />
+      )}
+      {editingEvent && (
+        <EventFormModal
+          event={editingEvent}
+          onClose={() => setEditingEvent(null)}
+          onSave={(body) => editEvent(editingEvent.id, body)}
+        />
       )}
     </div>
   );

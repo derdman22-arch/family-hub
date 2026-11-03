@@ -9,6 +9,9 @@ const userSchema = new mongoose.Schema(
     name:      String,
     picture:   String,
     lastLogin: Date,
+    // Encrypted (lib/tokenCrypto). Lets the server call Google Calendar without
+    // the user signing in again every hour. Never sent to the client.
+    googleRefreshToken: { type: String, select: false },
   },
   { timestamps: true }
 );

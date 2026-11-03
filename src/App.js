@@ -1,123 +1,93 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { GoogleOAuthProvider } from '@react-oauth/google';
 import NavBar from './components/layout/NavBar';
-import GoogleSignIn from './components/auth/GoogleSignIn';
-import HomePage from './pages/HomePage';
+import SignInScreen from './components/auth/SignInScreen';
+import TodosPage from './pages/TodosPage';
 import CalendarPage from './pages/CalendarPage';
-import StPetePage from './pages/StPetePage';
-import MessagesPage from './pages/MessagesPage';
+import GroceryPage from './pages/GroceryPage';
+import { api, getSession, clearSession } from './services/api';
+import { completeGoogleSignIn } from './services/authService';
+import {
+  registerServiceWorker, syncSubscription, disableNotifications, setBadge,
+} from './services/pushService';
 
-const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '';
+// Module-level so React StrictMode's double effect run can't redeem the code twice
+let callbackHandled = false;
 
-function ComingSoon({ label }) {
-  return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center text-gray-500">
-      <div className="text-center">
-        <div className="text-4xl mb-3">🚧</div>
-        <div className="text-lg font-medium">{label}</div>
-        <div className="text-sm mt-1">Coming soon</div>
-      </div>
-    </div>
-  );
-}
+function AppShell({ session, onSignOut }) {
+  const me = session.user;
+  const [users, setUsers] = useState([me]);
 
-function AppShell({ user, onSignOut }) {
+  useEffect(() => {
+    api('/users').then(setUsers).catch(() => {});
+    syncSubscription();
+  }, []);
+
   return (
     <>
-      <NavBar user={user} onSignOut={onSignOut} />
+      <NavBar user={me} onSignOut={onSignOut} />
       {/* Bottom padding clears the fixed tab bar on phones */}
       <div className="bg-gray-950 pb-[calc(4rem_+_env(safe-area-inset-bottom))] md:pb-0">
-      <Routes>
-        <Route path="/" element={<HomePage user={user} />} />
-<Route path="/dashboard" element={<ComingSoon label="Dashboard" />} />
-        <Route path="/calendar" element={<CalendarPage accessToken={user.access_token} />} />
-        <Route path="/expenses" element={<ComingSoon label="Expenses" />} />
-        <Route path="/grocery" element={<ComingSoon label="Grocery List" />} />
-        <Route path="/st-pete" element={<StPetePage />} />
-        <Route path="/messages" element={<MessagesPage user={user} />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+        <Routes>
+          <Route path="/" element={<TodosPage me={me} users={users} />} />
+          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/grocery" element={<GroceryPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </div>
     </>
   );
 }
 
-function AuthenticatedApp() {
-  const [user, setUser] = useState(() => {
-    try {
-      const saved = JSON.parse(sessionStorage.getItem('fh_user'));
-      // A session without a server-issued JWT never passed the allowlist check
-      return saved?.jwt_token ? saved : null;
-    } catch {
-      return null;
-    }
-  });
+export default function App() {
+  const [session, setSession] = useState(getSession);
   const [authError, setAuthError] = useState(null);
-  const [signingIn, setSigningIn] = useState(false);
+  const [completing, setCompleting] = useState(window.location.pathname === '/auth/callback');
 
-  async function handleSignIn(tokenResponse) {
-    setAuthError(null);
-    setSigningIn(true);
+  useEffect(() => { registerServiceWorker(); }, []);
 
-    try {
-      const profileResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+  // api() fires this when the server rejects the session
+  useEffect(() => {
+    const onSignedOut = (e) => {
+      setSession(null);
+      setAuthError(e.detail || 'Please sign in again.');
+    };
+    window.addEventListener('fh:signedout', onSignedOut);
+    return () => window.removeEventListener('fh:signedout', onSignedOut);
+  }, []);
+
+  // Google redirects back to /auth/callback?code=…
+  useEffect(() => {
+    if (window.location.pathname !== '/auth/callback' || callbackHandled) return;
+    callbackHandled = true;
+    completeGoogleSignIn(window.location.search)
+      .then((s) => {
+        if (!s) return; // redirecting to Google's consent screen
+        window.history.replaceState(null, '', '/');
+        setSession(s);
+        setCompleting(false);
+      })
+      .catch((err) => {
+        window.history.replaceState(null, '', '/');
+        setAuthError(err.message);
+        setCompleting(false);
       });
-      if (!profileResp.ok) throw new Error('Google profile lookup failed');
-      const profile = await profileResp.json();
+  }, []);
 
-      // The backend checks the Atlas allowlist and issues the JWT. Fail closed:
-      // if it can't be reached or doesn't return a token, the user stays signed out.
-      const resp = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_token: tokenResponse.access_token }),
-      });
-      if (resp.status === 403) {
-        setAuthError(`${profile.email} is not authorized to access Family Hub.`);
-        return;
-      }
-      if (!resp.ok) throw new Error(`Auth server responded ${resp.status}`);
-      const { token } = await resp.json();
-      if (!token) throw new Error('Auth server returned no token');
-
-      const userData = {
-        access_token: tokenResponse.access_token,
-        name: profile.name,
-        picture: profile.picture,
-        email: profile.email,
-        jwt_token: token,
-      };
-      sessionStorage.setItem('fh_user', JSON.stringify(userData));
-      setUser(userData);
-    } catch {
-      setAuthError("Couldn't verify your account with the server. Please try again in a moment.");
-    } finally {
-      setSigningIn(false);
-    }
+  async function handleSignOut() {
+    await disableNotifications();
+    setBadge(0);
+    clearSession();
+    setSession(null);
   }
 
-  function handleSignOut() {
-    sessionStorage.removeItem('fh_user');
-    setUser(null);
-  }
-
-  if (!user) {
-    return <GoogleSignIn onSuccess={handleSignIn} authError={authError} signingIn={signingIn} />;
+  if (!session || completing) {
+    return <SignInScreen authError={authError} signingIn={completing} />;
   }
 
   return (
     <BrowserRouter>
-      <AppShell user={user} onSignOut={handleSignOut} />
+      <AppShell session={session} onSignOut={handleSignOut} />
     </BrowserRouter>
-  );
-}
-
-export default function App() {
-  return (
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <AuthenticatedApp />
-    </GoogleOAuthProvider>
   );
 }

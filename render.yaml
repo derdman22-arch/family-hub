@@ -3,7 +3,7 @@ services:
     name: family-hub-api
     runtime: node
     rootDir: server
-    plan: free
+    plan: starter
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
@@ -18,5 +18,17 @@ services:
         sync: false          # set in the Render dashboard, never in git
       - key: GOOGLE_CLIENT_ID
         sync: false          # same value as REACT_APP_GOOGLE_CLIENT_ID
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_CALENDAR_ID
+        sync: false          # the shared family calendar's ID
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false          # 32 random bytes, base64 — see server/.env.example
+      - key: VAPID_PUBLIC_KEY
+        sync: false
+      - key: VAPID_PRIVATE_KEY
+        sync: false
+      - key: VAPID_SUBJECT
+        sync: false          # mailto: address for the push service
       - key: CLIENT_ORIGIN
         sync: false          # your Vercel URL, e.g. https://family-hub.vercel.app

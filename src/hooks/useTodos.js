@@ -1,35 +1,61 @@
 import { useState, useEffect, useCallback } from 'react';
-import { fetchNotes, createNote, patchNote } from '../services/todosService';
+import { fetchTodos, createTodo, patchTodo, deleteTodo } from '../services/todosService';
+import { setBadge } from '../services/pushService';
+import { useLiveRefresh } from './useLiveRefresh';
 
-export function useNotes(jwtToken) {
-  const [notes, setNotes] = useState([]);
+export function useTodos(myId) {
+  const [todos, setTodos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
     try {
-      setLoading(true);
       setError(null);
-      const data = await fetchNotes(jwtToken);
-      setNotes(data);
+      setTodos(await fetchTodos());
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [jwtToken]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
+  useLiveRefresh(load);
 
-  async function add(payload) {
-    const note = await createNote(jwtToken, payload);
-    setNotes((prev) => [note, ...prev]);
+  // Home-screen badge = my open to-dos
+  useEffect(() => {
+    if (!loading) setBadge(todos.filter((t) => !t.completedAt && t.assignedTo === myId).length);
+  }, [todos, loading, myId]);
+
+  const replace = (updated) => setTodos((prev) => prev.map((t) => (t._id === updated._id ? updated : t)));
+
+  async function add(text, assignedTo) {
+    const todo = await createTodo({ text, assignedTo });
+    setTodos((prev) => [todo, ...prev]);
   }
 
+  // Optimistic so checking off feels instant; reloads if the server disagrees
   async function update(id, patch) {
-    const updated = await patchNote(jwtToken, id, patch);
-    setNotes((prev) => prev.map((n) => (n._id === updated._id ? updated : n)));
+    setTodos((prev) => prev.map((t) => (t._id === id
+      ? { ...t, ...patch, ...('completed' in patch && { completedAt: patch.completed ? new Date().toISOString() : null }) }
+      : t)));
+    try {
+      replace(await patchTodo(id, patch));
+    } catch (err) {
+      setError(err.message);
+      load();
+    }
   }
 
-  return { notes, loading, error, add, update };
+  async function remove(id) {
+    setTodos((prev) => prev.filter((t) => t._id !== id));
+    try {
+      await deleteTodo(id);
+    } catch (err) {
+      setError(err.message);
+      load();
+    }
+  }
+
+  return { todos, loading, error, add, update, remove };
 }

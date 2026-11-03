@@ -14,7 +14,7 @@ family-hub/
 
 ## Part 1 — MongoDB Atlas (database)
 
-1. In your M0 cluster → **Network Access** → add IP `0.0.0.0/0` (allow from anywhere). Render's free tier doesn't give a static outbound IP, so you can't whitelist a single address. The connection string + credentials are your real security boundary.
+1. In your M0 cluster → **Network Access** → add IP `0.0.0.0/0` (allow from anywhere). Render doesn't give a static outbound IP, so you can't whitelist a single address. The connection string + credentials are your real security boundary.
 2. **Database Access** → create a dedicated app user (not your admin login) with `readWrite` on the `prod` database only.
 3. Grab the connection string — the direct (non-SRV) format this app uses:
    ```
@@ -34,7 +34,7 @@ services:
     name: family-hub-api
     runtime: node
     rootDir: server
-    plan: free
+    plan: starter
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
@@ -106,15 +106,13 @@ Vercel dashboard → **Add New… → Project** → import the GitHub repo. It a
 
 ### 3c. Environment variables
 
-Set these under **Project → Settings → Environment Variables** (Production). They're baked in at build time, so redeploy after changing any:
+Set this under **Project → Settings → Environment Variables** (Production). It's baked in at build time, so redeploy after changing it:
 
 | Variable | Value |
 |---|---|
 | `REACT_APP_GOOGLE_CLIENT_ID` | Your OAuth client ID |
-| `REACT_APP_GOOGLE_PLACES_KEY` | Google Places API key |
-| `REACT_APP_GOOGLE_CALENDAR_ID` | Shared family calendar ID |
 
-Everything prefixed `REACT_APP_` ships in the public JS bundle. Before going live, restrict the Places key in **Google Cloud Console → Credentials → your API key**: under *Application restrictions* choose **Websites** and add `https://<project>.vercel.app/*` (plus `http://localhost:3000/*` for dev), and under *API restrictions* allow only **Places API (New)**. Otherwise anyone who copies the key from the bundle can run up your bill.
+Everything prefixed `REACT_APP_` ships in the public JS bundle. Every other setting (calendar ID, client secret, push keys) lives on Render.
 
 ### 3d. Deploy
 
@@ -124,57 +122,55 @@ Vercel builds on every push to `main` and gives you `https://<project>.vercel.ap
 
 ## Part 4 — Google OAuth
 
-In **Google Cloud Console → Credentials → your OAuth client**, the only thing that needs updating for production is:
+Sign-in uses Google's authorization-code flow: the browser is redirected to Google, Google redirects back to `/auth/callback`, and the API exchanges the code with the client secret. That gives the server a **refresh token**, so calendar access doesn't expire after an hour.
 
-- **Authorized JavaScript origins** — add:
-  `https://<project>.vercel.app`
+In **Google Cloud Console → APIs & Services → Credentials → your OAuth client**:
 
-No server-side callback URI is needed. The app uses Google Identity Services' client-side token flow (`useGoogleLogin` from `@react-oauth/google`), which gets the `access_token` directly in the browser and POSTs it to `/api/auth/google` for allowlist verification.
+- **Authorized redirect URIs** — add both:
+  - `https://<project>.vercel.app/auth/callback`
+  - `http://localhost:3000/auth/callback`
+- Copy the **client secret** into Render's `GOOGLE_CLIENT_SECRET` (and `server/.env` for local dev).
+- **OAuth consent screen → Publishing status** must be **In production**. In *Testing*, Google expires refresh tokens after 7 days and everyone would be signed out weekly. The app can stay unverified (users click through the warning once).
 
-Keep your `http://localhost:3000` entry so local dev still works — Google allows multiple origins.
+The first sign-in after this change asks for consent again, which is expected.
 
 ---
 
-## Part 5 — The cold-start workaround
+## Part 5 — Render settings for the API
 
-Render free web services sleep after 15 min idle → next request takes 30–60s. Two options:
+Use the **Starter** instance (about $7/month): it doesn't sleep, which the push notifications and instant app launches rely on. `render.yaml` already says `plan: starter`; for an existing service change it under **Settings → Instance Type**.
 
-- **Accept it.** For a family app opened a few times a day, a slow first load is livable and costs nothing.
-- **Keep it warm** with a free external pinger hitting `/api/health` every ~14 min:
-  - **UptimeRobot** (free, 5-min intervals) — easiest, no code.
-  - Or a **GitHub Actions cron**:
+Set these in the Render dashboard in addition to the Part 2 variables (`server/.env.example` explains each):
 
-```yaml
-# .github/workflows/keepalive.yml
-name: keepalive
-on:
-  schedule:
-    - cron: "*/14 * * * *"
-jobs:
-  ping:
-    runs-on: ubuntu-latest
-    steps:
-      - run: curl -s https://family-hub-api.onrender.com/api/health
-```
+| Variable | Value |
+|---|---|
+| `GOOGLE_CLIENT_SECRET` | From the OAuth client |
+| `GOOGLE_CALENDAR_ID` | The shared family calendar's ID |
+| `TOKEN_ENCRYPTION_KEY` | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | `npx web-push generate-vapid-keys` (run once, keep them) |
+| `VAPID_SUBJECT` | `mailto:` + your email |
+
+The server refuses to start without `GOOGLE_CLIENT_SECRET` and a valid `TOKEN_ENCRYPTION_KEY`. Without the VAPID keys it runs but sends no notifications.
 
 ---
 
 ## Part 6 — Phones
 
-The app is responsive: below 768px the top links become a bottom tab bar, and the calendar week becomes a day-by-day list. To install it on an iPhone: open the Vercel URL in **Safari → Share → Add to Home Screen**.
+1. Open the Vercel URL in **Safari → Share → Add to Home Screen**.
+2. Open Family Hub **from the Home Screen icon** and sign in.
+3. Tap **Turn on** in the banner on the To-dos tab and allow notifications.
 
-Sign-in lives in `sessionStorage` and Google access tokens last ~1 hour, so expect to sign in again after closing the app.
+iOS only allows web push for apps added to the Home Screen (iOS 16.4+). The icon badge shows your open to-dos. The session is stored in `localStorage` and lasts 60 days.
 
 ---
 
 ## Quick sanity checklist
 
 - [ ] Atlas network access set to `0.0.0.0/0`, dedicated app user created
-- [ ] Render env vars set in dashboard: `MONGODB_URI`, `CLIENT_ORIGIN`, `GOOGLE_CLIENT_ID` (must equal the frontend's client ID)
-- [ ] Places API key restricted to your Vercel domain + Places API only
+- [ ] Render on the Starter instance, env vars set: `MONGODB_URI`, `JWT_SECRET`, `CLIENT_ORIGIN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALENDAR_ID`, `TOKEN_ENCRYPTION_KEY`, `VAPID_*`
 - [ ] `CLIENT_ORIGIN` on Render = exact Vercel URL (no trailing slash)
 - [ ] `vercel.json` rewrite points at your real Render hostname
-- [ ] All `REACT_APP_*` env vars set in Vercel → Environment Variables
-- [ ] Google OAuth **Authorized JavaScript origins** updated with the Vercel URL
-- [ ] Tested: sign-in works, calendar reads/writes to shared Google Calendar
-- [ ] Tested on a phone: bottom tab bar shows, Add to Home Screen works
+- [ ] `REACT_APP_GOOGLE_CLIENT_ID` set in Vercel
+- [ ] Google OAuth **Authorized redirect URIs** include `<vercel url>/auth/callback`; consent screen is **In production**
+- [ ] Tested: sign-in works, calendar add/edit/delete reaches the shared Google Calendar
+- [ ] Tested on both iPhones: Home Screen install, notifications on, adding a to-do on one phone notifies the other

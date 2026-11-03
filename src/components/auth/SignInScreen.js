@@ -1,10 +1,9 @@
-import { useGoogleLogin } from '@react-oauth/google';
+import { useState } from 'react';
+import { startGoogleSignIn } from '../../services/authService';
 
-export default function GoogleSignIn({ onSuccess, authError, signingIn }) {
-  const login = useGoogleLogin({
-    onSuccess,
-    scope: 'https://www.googleapis.com/auth/calendar.events',
-  });
+export default function SignInScreen({ authError, signingIn }) {
+  const [redirecting, setRedirecting] = useState(false);
+  const busy = signingIn || redirecting;
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -12,29 +11,21 @@ export default function GoogleSignIn({ onSuccess, authError, signingIn }) {
         <div className="text-5xl mb-4">🏠</div>
         <h1 className="text-3xl font-bold text-white mb-2">Family Hub</h1>
         <p className="text-gray-400 mb-10 text-sm">
-          Your family's finances, calendar, and more — all in one place.
+          Our calendar, to-dos and grocery list in one place.
         </p>
         <button
-          onClick={() => login()}
-          disabled={signingIn}
+          onClick={() => { setRedirecting(true); startGoogleSignIn(); }}
+          disabled={busy}
           className="flex items-center gap-3 bg-white text-gray-800 px-6 py-3 rounded-xl font-semibold hover:bg-gray-100 active:bg-gray-200 transition-colors mx-auto shadow-lg disabled:opacity-60 disabled:cursor-wait"
         >
           <GoogleIcon />
-          {signingIn ? 'Signing in…' : 'Sign in with Google'}
+          {busy ? 'Signing in…' : 'Sign in with Google'}
         </button>
-        {signingIn && (
-          <p className="text-gray-500 text-xs mt-4">
-            Waking up the server — this can take up to a minute.
-          </p>
-        )}
         {authError && (
           <p className="text-red-400 text-sm mt-6 bg-red-950 border border-red-800 rounded-lg px-4 py-3">
             {authError}
           </p>
         )}
-        <p className="text-gray-600 text-xs mt-6">
-          Only your Google account is used — data stays in your own Google Sheet.
-        </p>
       </div>
     </div>
   );
