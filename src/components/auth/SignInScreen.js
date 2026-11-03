@@ -8,7 +8,7 @@ export default function SignInScreen({ authError, signingIn }) {
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">
       <div className="text-center max-w-sm mx-auto px-6">
-        <div className="text-5xl mb-4">🏠</div>
+        <img src="/logo192.png" alt="" className="w-20 h-20 rounded-2xl mx-auto mb-4" />
         <h1 className="text-3xl font-bold text-white mb-2">Family Hub</h1>
         <p className="text-gray-400 mb-10 text-sm">
           Our calendar, to-dos and grocery list in one place.

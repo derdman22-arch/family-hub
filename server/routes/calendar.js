@@ -6,8 +6,12 @@ const router = express.Router();
 
 router.use(requireAuth);
 
+// Trimmed because a value pasted into a hosting dashboard can carry a stray
+// space or newline, which Google treats as a different (unknown) calendar.
+const CALENDAR_ID = (process.env.GOOGLE_CALENDAR_ID || 'primary').trim().replace(/^["']|["']$/g, '');
+
 function eventsPath(eventId) {
-  const calendarId = encodeURIComponent(process.env.GOOGLE_CALENDAR_ID || 'primary');
+  const calendarId = encodeURIComponent(CALENDAR_ID);
   return `/calendars/${calendarId}/events${eventId ? `/${encodeURIComponent(eventId)}` : ''}`;
 }
 
@@ -24,6 +28,9 @@ const handle = (fn) => async (req, res) => {
     if (resp.status === 204) return res.status(204).end();
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
+      // The ID's shape (not its value) helps tell a bad setting from missing access
+      console.error(`Calendar API ${resp.status} for user ${req.user.userId}: ${data?.error?.message} `
+        + `(calendar ID ${CALENDAR_ID.length} chars, ends "${CALENDAR_ID.slice(-27)}")`);
       return res.status(resp.status).json({ error: data?.error?.message || `Calendar API error ${resp.status}` });
     }
     res.status(resp.status).json(data);

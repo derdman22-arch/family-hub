@@ -26,7 +26,12 @@ async function exchangeCode(code, redirectUri) {
       grant_type: 'authorization_code',
     }),
   });
-  if (!resp.ok) return null;
+  if (!resp.ok) {
+    // e.g. invalid_client = wrong secret, redirect_uri_mismatch, invalid_grant = code reused/expired
+    const body = await resp.json().catch(() => ({}));
+    console.error(`Google code exchange failed (${resp.status}): ${body.error} ${body.error_description || ''}`);
+    return null;
+  }
   return resp.json();
 }
 
